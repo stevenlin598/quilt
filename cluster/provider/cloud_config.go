@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	quiltImage = "quilt/quilt:latest"
+	quiltImage = "quilt/quilt:paper"
 )
 
 var cloudConfigFormat = `#!/bin/bash
