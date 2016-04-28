@@ -7,8 +7,9 @@ import "errors"
 type Minion struct {
 	ID int `json:"-"`
 
-	Self bool   `json:"-"`
-	Spec string `json:"-"`
+	Self     bool   `json:"-"`
+	Spec     string `json:"-"`
+	PublicIP string `json:"-"`
 
 	// Below fields are included in the JSON encoding.
 	Role      Role

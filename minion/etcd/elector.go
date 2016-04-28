@@ -64,7 +64,7 @@ func campaign(conn db.Conn, store Store) {
 			continue
 		}
 
-		IP := minion.PrivateIP
+		IP := minion.PublicIP
 		if IP == "" {
 			continue
 		}

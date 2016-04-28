@@ -127,8 +127,8 @@ func (fm *foreman) runOnce() {
 
 	var etcdIPs []string
 	for _, m := range fm.minions {
-		if m.machine.Role == db.Master && m.machine.PrivateIP != "" {
-			etcdIPs = append(etcdIPs, m.machine.PrivateIP)
+		if m.machine.Role == db.Master && m.machine.PublicIP != "" {
+			etcdIPs = append(etcdIPs, m.machine.PublicIP)
 		}
 	}
 
@@ -141,6 +141,7 @@ func (fm *foreman) runOnce() {
 		newConfig := pb.MinionConfig{
 			Role:      db.RoleToPB(m.machine.Role),
 			PrivateIP: m.machine.PrivateIP,
+			PublicIP:  m.machine.PublicIP,
 			Spec:      fm.spec,
 			Provider:  string(m.machine.Provider),
 			Size:      m.machine.Size,

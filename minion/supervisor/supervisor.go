@@ -49,14 +49,15 @@ type supervisor struct {
 	conn db.Conn
 	dk   docker.Client
 
-	role     db.Role
-	etcdIPs  []string
-	leaderIP string
-	IP       string
-	leader   bool
-	provider string
-	region   string
-	size     string
+	role      db.Role
+	etcdIPs   []string
+	leaderIP  string
+	privateIP string
+	publicIP  string
+	leader    bool
+	provider  string
+	region    string
+	size      string
 }
 
 // Run blocks implementing the supervisor module.
@@ -95,7 +96,8 @@ func (sv *supervisor) runSystemOnce() {
 	if sv.role == minion.Role &&
 		reflect.DeepEqual(sv.etcdIPs, etcdRow.EtcdIPs) &&
 		sv.leaderIP == etcdRow.LeaderIP &&
-		sv.IP == minion.PrivateIP &&
+		sv.privateIP == minion.PrivateIP &&
+		sv.publicIP == minion.PublicIP &&
 		sv.leader == etcdRow.Leader &&
 		sv.provider == minion.Provider &&
 		sv.region == minion.Region &&
@@ -109,29 +111,29 @@ func (sv *supervisor) runSystemOnce() {
 
 	switch minion.Role {
 	case db.Master:
-		sv.updateMaster(minion.PrivateIP, etcdRow.EtcdIPs,
+		sv.updateMaster(minion.PublicIP, minion.PrivateIP, etcdRow.EtcdIPs,
 			etcdRow.Leader)
 	case db.Worker:
-		sv.updateWorker(minion.PrivateIP, etcdRow.LeaderIP,
-			etcdRow.EtcdIPs)
+		sv.updateWorker(minion.PublicIP, etcdRow.LeaderIP, etcdRow.EtcdIPs)
 	}
 
 	sv.role = minion.Role
 	sv.etcdIPs = etcdRow.EtcdIPs
 	sv.leaderIP = etcdRow.LeaderIP
-	sv.IP = minion.PrivateIP
+	sv.privateIP = minion.PrivateIP
+	sv.publicIP = minion.PublicIP
 	sv.leader = etcdRow.Leader
 	sv.provider = minion.Provider
 	sv.region = minion.Region
 	sv.size = minion.Size
 }
 
-func (sv *supervisor) updateWorker(IP string, leaderIP string, etcdIPs []string) {
+func (sv *supervisor) updateWorker(publicIP, leaderIP string, etcdIPs []string) {
 	if !reflect.DeepEqual(sv.etcdIPs, etcdIPs) {
 		sv.Remove(Etcd)
 	}
 
-	if sv.leaderIP != leaderIP || sv.IP != IP {
+	if sv.leaderIP != leaderIP || sv.publicIP != publicIP {
 		sv.Remove(Swarm)
 	}
 
@@ -143,18 +145,19 @@ func (sv *supervisor) updateWorker(IP string, leaderIP string, etcdIPs []string)
 	sv.run(Ovsdb, "ovsdb-server")
 	sv.run(Ovsvswitchd, "ovs-vswitchd")
 
-	if leaderIP == "" || IP == "" {
+	if leaderIP == "" || publicIP == "" {
 		return
 	}
 
-	sv.run(Swarm, "join", fmt.Sprintf("--addr=%s:2375", IP), "etcd://127.0.0.1:2379")
+	sv.run(Swarm, "join", fmt.Sprintf("--addr=%s:2375", publicIP),
+		"etcd://127.0.0.1:2379")
 
 	err := sv.dk.Exec(Ovsvswitchd, "ovs-vsctl", "set", "Open_vSwitch", ".",
 		fmt.Sprintf("external_ids:ovn-remote=\"tcp:%s:6640\"", leaderIP),
-		fmt.Sprintf("external_ids:ovn-encap-ip=%s", IP),
+		fmt.Sprintf("external_ids:ovn-encap-ip=%s", publicIP),
 		"external_ids:ovn-encap-type=\"geneve\"",
 		fmt.Sprintf("external_ids:api_server=\"http://%s:9000\"", leaderIP),
-		fmt.Sprintf("external_ids:system-id=\"%s\"", IP),
+		fmt.Sprintf("external_ids:system-id=\"%s\"", publicIP),
 		"--", "add-br", "quilt-int",
 		"--", "set", "bridge", "quilt-int", "fail_mode=secure")
 	if err != nil {
@@ -167,31 +170,33 @@ func (sv *supervisor) updateWorker(IP string, leaderIP string, etcdIPs []string)
 	sv.run(Ovncontroller, "ovn-controller")
 }
 
-func (sv *supervisor) updateMaster(IP string, etcdIPs []string, leader bool) {
-	if sv.IP != IP || !reflect.DeepEqual(sv.etcdIPs, etcdIPs) {
+func (sv *supervisor) updateMaster(publicIP, privateIP string, etcdIPs []string,
+	leader bool) {
+
+	if sv.publicIP != publicIP || !reflect.DeepEqual(sv.etcdIPs, etcdIPs) {
 		sv.Remove(Etcd)
 	}
 
-	if sv.IP != IP {
+	if sv.privateIP != privateIP {
 		sv.Remove(Swarm)
 	}
 
-	if IP == "" || len(etcdIPs) == 0 {
+	if privateIP == "" || publicIP == "" || len(etcdIPs) == 0 {
 		return
 	}
 
-	sv.run(Etcd, fmt.Sprintf("--name=master-%s", IP),
+	sv.run(Etcd, fmt.Sprintf("--name=master-%s", publicIP),
 		fmt.Sprintf("--initial-cluster=%s", initialClusterString(etcdIPs)),
-		fmt.Sprintf("--advertise-client-urls=http://%s:2379", IP),
-		fmt.Sprintf("--listen-peer-urls=http://%s:2380", IP),
-		fmt.Sprintf("--initial-advertise-peer-urls=http://%s:2380", IP),
+		fmt.Sprintf("--advertise-client-urls=http://%s:2379", publicIP),
+		fmt.Sprintf("--initial-advertise-peer-urls=http://%s:2380", publicIP),
+		"--listen-peer-urls=http://0.0.0.0:2380",
 		"--listen-client-urls=http://0.0.0.0:2379",
 		"--heartbeat-interval="+etcdHeartbeatInterval,
 		"--initial-cluster-state=new",
 		"--election-timeout="+etcdElectionTimeout)
 	sv.run(Ovsdb, "ovsdb-server")
 
-	swarmAddr := IP + ":2377"
+	swarmAddr := privateIP + ":2377"
 	sv.run(Swarm, "manage", "--replication", "--addr="+swarmAddr,
 		"--host="+swarmAddr, "etcd://127.0.0.1:2379")
 
