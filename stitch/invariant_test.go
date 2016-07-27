@@ -39,6 +39,22 @@ func TestReach(t *testing.T) {
 	}
 }
 
+func TestNeighbor(t *testing.T) {
+	stc := `(label "a" (docker "ubuntu"))
+(label "b" (docker "ubuntu"))
+(label "c" (docker "ubuntu"))
+
+(connect 22 "a" "b")
+(connect 22 "b" "c")
+
+(invariant reachDirect false "a" "c")
+(invariant reachDirect true "b" "c")`
+	_, err := initSpec(stc)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestFail(t *testing.T) {
 	stc := `(label "a" (docker "ubuntu"))
 (label "b" (docker "ubuntu"))

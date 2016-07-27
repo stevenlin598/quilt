@@ -9,6 +9,8 @@ type invariantType int
 const (
 	// Reachability (reach): two arguments, <from> <to...>
 	reachInvariant = iota
+	// Neighborship (reach-direct): two arguments, <from> <to>
+	neighborInvariant
 	// On-pathness (between): three arguments, <from> <to> <between>
 	betweenInvariant
 	// Schedulability (enough): zero arguments
@@ -35,13 +37,15 @@ var formImpls map[invariantType]func(graph Graph, inv invariant) bool
 
 func init() {
 	formKeywords = map[string]invariantType{
-		"reach":   reachInvariant,
-		"between": betweenInvariant,
-		"enough":  schedulabilityInvariant,
+		"reach":       reachInvariant,
+		"reachDirect": neighborInvariant,
+		"between":     betweenInvariant,
+		"enough":      schedulabilityInvariant,
 	}
 
 	formImpls = map[invariantType]func(graph Graph, inv invariant) bool{
 		reachInvariant:          reachImpl,
+		neighborInvariant:       neighborImpl,
 		betweenInvariant:        betweenImpl,
 		schedulabilityInvariant: schedulabilityImpl,
 	}
@@ -73,6 +77,30 @@ func reachImpl(graph Graph, inv invariant) bool {
 	for _, from := range fromNodes {
 		for _, to := range toNodes {
 			pass := contains(from.dfs(), to.Name) == inv.target
+			allPassed = allPassed && pass
+		}
+	}
+
+	return allPassed
+}
+
+func neighborImpl(graph Graph, inv invariant) bool {
+	var fromNodes []Node
+	var toNodes []Node
+	for _, node := range graph.Nodes {
+		if node.Label == inv.nodes[0] {
+			fromNodes = append(fromNodes, node)
+		}
+		if node.Label == inv.nodes[1] {
+			toNodes = append(toNodes, node)
+		}
+	}
+
+	allPassed := true
+	for _, from := range fromNodes {
+		for _, to := range toNodes {
+			_, ok := from.Connections[to.Name]
+			pass := ok == inv.target
 			allPassed = allPassed && pass
 		}
 	}
