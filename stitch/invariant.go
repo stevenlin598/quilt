@@ -11,6 +11,9 @@ const (
 	reachInvariant = iota
 	// Neighborship (reach-direct): two arguments, <from> <to>
 	neighborInvariant
+	// Reachability, don't pass through ACL-annotated nodes (reachACL):
+	// two arguments, <from> <to...>
+	reachACLInvariant
 	// On-pathness (between): three arguments, <from> <to> <between>
 	betweenInvariant
 	// Schedulability (enough): zero arguments
@@ -44,6 +47,7 @@ func init() {
 	formKeywords = map[string]invariantType{
 		"reach":       reachInvariant,
 		"reachDirect": neighborInvariant,
+		"reachACL":    reachACLInvariant,
 		"between":     betweenInvariant,
 		"enough":      schedulabilityInvariant,
 	}
@@ -51,6 +55,7 @@ func init() {
 	formImpls = map[invariantType]func(graph Graph, inv invariant) bool{
 		reachInvariant:          reachImpl,
 		neighborInvariant:       neighborImpl,
+		reachACLInvariant:       reachACLImpl,
 		betweenInvariant:        betweenImpl,
 		schedulabilityInvariant: schedulabilityImpl,
 	}
@@ -106,6 +111,30 @@ func neighborImpl(graph Graph, inv invariant) bool {
 		for _, to := range toNodes {
 			_, ok := from.Connections[to.Name]
 			if pass := ok == inv.target; !pass {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func reachACLImpl(graph Graph, inv invariant) bool {
+	var fromNodes []Node
+	var toNodes []Node
+	for _, node := range graph.Nodes {
+		if node.Label == inv.nodes[0] {
+			fromNodes = append(fromNodes, node)
+		}
+		if node.Label == inv.nodes[1] {
+			toNodes = append(toNodes, node)
+		}
+	}
+
+	for _, from := range fromNodes {
+		for _, to := range toNodes {
+			if reachable := contains(from.dfsWithACL(),
+				to.Name); reachable != inv.target {
 				return false
 			}
 		}

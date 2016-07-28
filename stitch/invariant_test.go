@@ -55,6 +55,23 @@ func TestNeighbor(t *testing.T) {
 	}
 }
 
+func TestAnnotation(t *testing.T) {
+	stc := `(label "a" (docker "ubuntu"))
+(label "b" (docker "ubuntu"))
+(label "c" (docker "ubuntu"))
+
+(connect 22 "a" "b")
+(connect 22 "b" "c")
+
+(annotate ACL "b")
+(invariant reachACL false "a" "c")
+`
+	_, err := initSpec(stc)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestFail(t *testing.T) {
 	stc := `(label "a" (docker "ubuntu"))
 (label "b" (docker "ubuntu"))
