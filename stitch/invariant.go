@@ -73,15 +73,16 @@ func reachImpl(graph Graph, inv invariant) bool {
 		}
 	}
 
-	allPassed := true
 	for _, from := range fromNodes {
 		for _, to := range toNodes {
-			pass := contains(from.dfs(), to.Name) == inv.target
-			allPassed = allPassed && pass
+			if pass := contains(from.dfs(),
+				to.Name) == inv.target; !pass {
+				return false
+			}
 		}
 	}
 
-	return allPassed
+	return true
 }
 
 func neighborImpl(graph Graph, inv invariant) bool {
@@ -96,16 +97,16 @@ func neighborImpl(graph Graph, inv invariant) bool {
 		}
 	}
 
-	allPassed := true
 	for _, from := range fromNodes {
 		for _, to := range toNodes {
 			_, ok := from.Connections[to.Name]
-			pass := ok == inv.target
-			allPassed = allPassed && pass
+			if pass := ok == inv.target; !pass {
+				return false
+			}
 		}
 	}
 
-	return allPassed
+	return true
 }
 
 func betweenImpl(graph Graph, inv invariant) bool {
