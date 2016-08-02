@@ -8,6 +8,7 @@ import (
 type Node struct {
 	Name        string
 	Label       string
+	Annotations map[string]struct{}
 	Connections map[string]Node
 }
 
@@ -39,12 +40,12 @@ func InitializeGraph(spec Stitch) (Graph, error) {
 		Machines:     []Machine{},
 	}
 
-	for label, cids := range spec.QueryLabels() {
-		for _, cid := range cids {
-			g.addNode(fmt.Sprintf("%d", cid), label)
+	for _, label := range spec.QueryLabels() {
+		for _, cid := range label.IDs {
+			g.addNode(fmt.Sprintf("%d", cid), label.Name, label.Annotations)
 		}
 	}
-	g.addNode(PublicInternetLabel, PublicInternetLabel)
+	g.addNode(PublicInternetLabel, PublicInternetLabel, []string{})
 
 	for _, conn := range spec.QueryConnections() {
 		err := g.addConnection(conn.From, conn.To)
@@ -123,10 +124,15 @@ func (g Graph) getNodes() []Node {
 	return res
 }
 
-func (g *Graph) addNode(cid string, label string) Node {
+func (g *Graph) addNode(cid string, label string, annotations []string) Node {
+	annotationSet := make(map[string]struct{})
+	for _, a := range annotations {
+		annotationSet[a] = struct{}{}
+	}
 	n := Node{
 		Name:        cid,
 		Label:       label,
+		Annotations: annotationSet,
 		Connections: map[string]Node{},
 	}
 	g.Nodes[cid] = n

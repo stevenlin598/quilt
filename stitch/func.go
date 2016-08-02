@@ -42,6 +42,7 @@ func init() {
 		"=":                {eqImpl, 2, false},
 		">":                {more, 2, false},
 		"and":              {andImpl, 1, true},
+		"annotate":         {annotateImpl, 2, false},
 		"append":           {appendImpl, 2, false},
 		"apply":            {applyImpl, 2, false},
 		"bool":             {boolImpl, 1, false},
@@ -198,7 +199,7 @@ func setEnvHelper(container astContainer, key, value ast) error {
 func setEnvImpl(ctx *evalCtx, args []ast) (ast, error) {
 	for _, arg := range flatten([]ast{args[0]}) {
 		switch val := arg.(type) {
-		case astString, astLabel:
+		case astString, *astLabel:
 			label, ok := ctx.resolveLabel(val)
 			if !ok {
 				return nil,
@@ -536,7 +537,7 @@ func connectImpl(ctx *evalCtx, args []ast) (ast, error) {
 	return astList{}, nil
 }
 
-func connectPair(ctx *evalCtx, from, to astLabel, min, max int) error {
+func connectPair(ctx *evalCtx, from, to *astLabel, min, max int) error {
 	global := ctx.globalCtx()
 
 	if from.ident == PublicInternetLabel && to.ident == PublicInternetLabel {
@@ -599,7 +600,7 @@ func labelImpl(ctx *evalCtx, args []ast) (ast, error) {
 		switch t := elem.(type) {
 		case astContainer:
 			containers = append(containers, t)
-		case astString, astLabel:
+		case astString, *astLabel:
 			l, ok := ctx.resolveLabel(t)
 			if !ok {
 				return nil, fmt.Errorf("undefined label: %s", t)
@@ -611,7 +612,7 @@ func labelImpl(ctx *evalCtx, args []ast) (ast, error) {
 		}
 	}
 
-	newLabel := astLabel{ident: astString(label), elems: nil}
+	newLabel := &astLabel{ident: astString(label), elems: nil}
 
 	// `containers` likely has duplicates, we'll need to remove them.
 	idSet := map[int]struct{}{}
@@ -751,6 +752,27 @@ func hmapValuesImpl(ctx *evalCtx, args []ast) (ast, error) {
 	}
 
 	return astList(ret), nil
+}
+
+func annotateImpl(ctx *evalCtx, args []ast) (ast, error) {
+	// Annotation format: (annotate ACL <node labels...>)
+	annotationType, ok := args[0].(astAnnotation)
+	if !ok {
+		return nil, fmt.Errorf("annotate requires an annotation type, found %s",
+			args[0])
+	}
+
+	for _, arg := range args[1:] {
+		lbl, ok := ctx.resolveLabel(arg)
+		if !ok {
+			return nil, fmt.Errorf(
+				"malformed annotation (unknown label %s)", arg)
+		}
+
+		lbl.annotations = append(lbl.annotations, annotationType)
+	}
+
+	return astList{}, nil
 }
 
 func invariantImpl(ctx *evalCtx, args []ast) (ast, error) {
@@ -1352,8 +1374,8 @@ func flattenString(lst []ast) ([]string, error) {
 	return strings, nil
 }
 
-func (ctx evalCtx) flattenLabel(lst []ast) ([]astLabel, error) {
-	var labels []astLabel
+func (ctx evalCtx) flattenLabel(lst []ast) ([]*astLabel, error) {
+	var labels []*astLabel
 	for _, elem := range flatten(lst) {
 		label, ok := ctx.resolveLabel(elem)
 		if !ok {
@@ -1369,20 +1391,20 @@ func astFunc(ident astIdent, args []ast) astSexp {
 	return astSexp{sexp: append([]ast{ident}, args...)}
 }
 
-func (ctx evalCtx) resolveLabel(labelRef ast) (astLabel, bool) {
+func (ctx evalCtx) resolveLabel(labelRef ast) (*astLabel, bool) {
 	switch val := labelRef.(type) {
 	case astString:
 		if string(val) == PublicInternetLabel {
-			return astLabel{ident: val}, true
+			return &astLabel{ident: val}, true
 		}
 		if label, ok := ctx.labels[string(val)]; ok {
 			return label, true
 		}
-	case astLabel:
+	case *astLabel:
 		return val, true
 	}
 	if ctx.parent != nil {
 		return ctx.parent.resolveLabel(labelRef)
 	}
-	return astLabel{}, false
+	return &astLabel{}, false
 }

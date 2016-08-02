@@ -115,9 +115,9 @@ func queryContainers(spec stitch.Stitch) []db.Container {
 		}
 	}
 
-	for label, ids := range spec.QueryLabels() {
-		for _, id := range ids {
-			containers[id].Labels = append(containers[id].Labels, label)
+	for _, label := range spec.QueryLabels() {
+		for _, id := range label.IDs {
+			containers[id].Labels = append(containers[id].Labels, label.Name)
 		}
 	}
 

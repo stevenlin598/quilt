@@ -6,8 +6,8 @@ type evalCtx struct {
 	parent *evalCtx
 
 	binds       map[astIdent]ast
-	labels      map[string]astLabel
-	ports       map[int][]astLabel
+	labels      map[string]*astLabel
+	ports       map[int][]*astLabel
 	connections map[Connection]struct{}
 	placements  map[Placement]struct{}
 	machines    *[]*astMachine
@@ -241,7 +241,7 @@ func (m astModule) eval(ctx *evalCtx) (ast, error) {
 	return astModule{moduleName: m.moduleName, body: res.(astList)}, nil
 }
 
-func (l astLabel) eval(ctx *evalCtx) (ast, error) {
+func (l *astLabel) eval(ctx *evalCtx) (ast, error) {
 	return l, nil
 }
 
@@ -273,6 +273,10 @@ func (bi astBuiltIn) eval(ctx *evalCtx) (ast, error) {
 	return bi, nil
 }
 
+func (a astAnnotation) eval(ctx *evalCtx) (ast, error) {
+	return a, nil
+}
+
 func evalList(ctx *evalCtx, args []ast) ([]ast, error) {
 	var result []ast
 	for _, a := range args {
@@ -291,8 +295,8 @@ func newEvalCtx(parent *evalCtx) evalCtx {
 	return evalCtx{
 		parent,
 		make(map[astIdent]ast),
-		make(map[string]astLabel),
-		make(map[int][]astLabel),
+		make(map[string]*astLabel),
+		make(map[int][]*astLabel),
 		make(map[Connection]struct{}),
 		make(map[Placement]struct{}),
 		&[]*astMachine{},

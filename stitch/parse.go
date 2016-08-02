@@ -36,6 +36,8 @@ func parseIdent(ident string) ast {
 		return astBool(true)
 	case "false":
 		return astBool(false)
+	case aclAnnotation:
+		return astAnnotation(ident)
 	default:
 		return astIdent(ident)
 	}

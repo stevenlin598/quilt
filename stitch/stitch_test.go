@@ -719,6 +719,24 @@ func TestKeys(t *testing.T) {
 }
 
 func TestLabel(t *testing.T) {
+	// Check whether the list of labels are equal, ignoring order.
+	checkLabels := func(listA []Label, listB []Label) bool {
+		if len(listA) != len(listB) {
+			return false
+		}
+
+		setA := make(map[string]Label)
+		for _, l := range listA {
+			setA[l.Name] = l
+		}
+
+		setB := make(map[string]Label)
+		for _, l := range listB {
+			setB[l.Name] = l
+		}
+
+		return reflect.DeepEqual(setA, setB)
+	}
 	env := map[string]string{}
 
 	code := `(label "foo" (docker "a"))
@@ -744,15 +762,30 @@ func TestLabel(t *testing.T) {
 			code, containerResult, expected))
 	}
 
-	expLabels := map[string][]int{
-		"foo":  {1},
-		"bar":  {1, 2},
-		"baz":  {1, 2},
-		"baz2": {1, 2},
-		"qux":  {3},
+	expLabels := []Label{
+		{
+			Name: "foo",
+			IDs:  []int{1},
+		},
+		{
+			Name: "bar",
+			IDs:  []int{1, 2},
+		},
+		{
+			Name: "baz",
+			IDs:  []int{1, 2},
+		},
+		{
+			Name: "baz2",
+			IDs:  []int{1, 2},
+		},
+		{
+			Name: "qux",
+			IDs:  []int{3},
+		},
 	}
 	labels := stitch.QueryLabels()
-	if !reflect.DeepEqual(labels, expLabels) {
+	if !checkLabels(labels, expLabels) {
 		t.Error(spew.Sprintf("\ntest labels: %v\nresult  : %v\nexpected: %v",
 			code, labels, expLabels))
 	}
@@ -774,12 +807,18 @@ func TestLabel(t *testing.T) {
 			code, containerResult, expected))
 	}
 
-	expLabels = map[string][]int{
-		"foo": {1, 2},
-		"bar": {1, 2},
+	expLabels = []Label{
+		{
+			Name: "foo",
+			IDs:  []int{1, 2},
+		},
+		{
+			Name: "bar",
+			IDs:  []int{1, 2},
+		},
 	}
 	labels = stitch.QueryLabels()
-	if !reflect.DeepEqual(labels, expLabels) {
+	if !checkLabels(labels, expLabels) {
 		t.Error(spew.Sprintf("\ntest labels: %v\nresult  : %v\nexpected: %v",
 			code, labels, expLabels))
 	}

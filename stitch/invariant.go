@@ -17,6 +17,11 @@ const (
 	schedulabilityInvariant
 )
 
+// Annotations.
+const (
+	aclAnnotation = "ACL"
+)
+
 type invariant struct {
 	form   invariantType
 	target bool     // Desired answer to invariant question.

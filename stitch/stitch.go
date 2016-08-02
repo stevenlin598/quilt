@@ -38,6 +38,13 @@ type Container struct {
 	Env     map[string]string
 }
 
+// A Label represents a logical group of containers.
+type Label struct {
+	Name        string
+	IDs         []int
+	Annotations []string
+}
+
 // A Connection allows containers implementing the From label to speak to containers
 // implementing the To label in ports in the range [MinPort, MaxPort]
 type Connection struct {
@@ -129,17 +136,25 @@ func New(specStr string) (Stitch, error) {
 	return toStitch(parsed)
 }
 
-// QueryLabels returns a map where the keys are labels defined in the stitch, and the
-// values are a slice of container IDs.
-func (stitch Stitch) QueryLabels() map[string][]int {
-	res := map[string][]int{}
+// QueryLabels retrieves all labels declared in the Stitch.
+func (stitch Stitch) QueryLabels() []Label {
+	var res []Label
 	for _, l := range stitch.ctx.labels {
 		var ids []int
 		for _, c := range l.elems {
 			ids = append(ids, c.ID)
 		}
 
-		res[string(l.ident)] = ids
+		var annotations []string
+		for _, a := range l.annotations {
+			annotations = append(annotations, string(a))
+		}
+
+		res = append(res, Label{
+			Name:        string(l.ident),
+			IDs:         ids,
+			Annotations: annotations,
+		})
 	}
 
 	return res

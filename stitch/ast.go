@@ -36,8 +36,9 @@ type astSexp struct {
 }
 
 type astLabel struct {
-	ident astString
-	elems []astContainer
+	ident       astString
+	elems       []astContainer
+	annotations []astAnnotation
 }
 
 /* The top level is a list of abstract syntax trees, typically populated by define
@@ -54,6 +55,8 @@ type astIdent string /* Identities, i.e. key words, variable names etc. */
 
 // An astBuiltIn is a special ident denoting the name of a builtin function.
 type astBuiltIn astIdent
+
+type astAnnotation astIdent
 
 /* Atoms. */
 type astString string
@@ -238,7 +241,7 @@ func (l astLambda) String() string {
 	return fmt.Sprintf("(lambda (%s) %s)", sliceStr(args, " "), l.do)
 }
 
-func (l astLabel) String() string {
+func (l *astLabel) String() string {
 	var asts []ast
 	for _, elem := range l.elems {
 		asts = append(asts, ast(elem))
@@ -291,6 +294,10 @@ func (c astContainer) String() string {
 
 func (bi astBuiltIn) String() string {
 	return string(bi)
+}
+
+func (a astAnnotation) String() string {
+	return string(a)
 }
 
 func sliceStr(asts []ast, sep string) string {
