@@ -27,6 +27,10 @@ func parse(s scanner.Scanner) ([]ast, error) {
 }
 
 func parseIdent(ident string) ast {
+	if _, ok := funcImplMap[astBuiltIn(ident)]; ok {
+		return astBuiltIn(ident)
+	}
+
 	switch ident {
 	case "true":
 		return astBool(true)

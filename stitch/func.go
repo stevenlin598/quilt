@@ -17,7 +17,7 @@ type funcImpl struct {
 	lazy    bool // True if arguments should not be evaluated automatically.
 }
 
-var funcImplMap map[astIdent]funcImpl
+var funcImplMap map[astBuiltIn]funcImpl
 
 // We have to initialize `funcImplMap` in an init function or else the compiler
 // will complain about an initialization loop (funcImplMap -> letImpl ->
@@ -31,7 +31,7 @@ func init() {
 	less := compareFun(func(a, b int) bool { return a < b })
 	more := compareFun(func(a, b int) bool { return a > b })
 
-	funcImplMap = map[astIdent]funcImpl{
+	funcImplMap = map[astBuiltIn]funcImpl{
 		"!":                {notImpl, 1, false},
 		"%":                {mod, 2, false},
 		"*":                {mul, 2, false},

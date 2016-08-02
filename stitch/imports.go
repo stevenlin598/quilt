@@ -86,12 +86,12 @@ func parseImport(ast ast) string {
 		return ""
 	}
 
-	ident, ok := sexp.sexp[0].(astIdent)
+	fnName, ok := sexp.sexp[0].(astBuiltIn)
 	if !ok {
 		return ""
 	}
 
-	if ident != "import" {
+	if fnName != "import" {
 		return ""
 	}
 

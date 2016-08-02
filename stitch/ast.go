@@ -52,6 +52,9 @@ type astModule struct {
 
 type astIdent string /* Identities, i.e. key words, variable names etc. */
 
+// An astBuiltIn is a special ident denoting the name of a builtin function.
+type astBuiltIn astIdent
+
 /* Atoms. */
 type astString string
 type astFloat float64
@@ -284,6 +287,10 @@ func (c astContainer) String() string {
 	}
 	return fmt.Sprintf("(docker %s %s %s)", c.image, sliceStr(c.command, " "),
 		c.env.String())
+}
+
+func (bi astBuiltIn) String() string {
+	return string(bi)
 }
 
 func sliceStr(asts []ast, sep string) string {

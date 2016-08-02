@@ -1429,6 +1429,13 @@ func TestQuery(t *testing.T) {
 	}
 }
 
+func TestRedefineReservedKeyword(t *testing.T) {
+	t.Parallel()
+	runtimeErr(t, "(define true false)", "1: define name must be an ident: true")
+	runtimeErr(t, `(define provider "provider")`,
+		"1: define name must be an ident: provider")
+}
+
 func parseTestImport(t *testing.T, code, evalExpected string, path string) evalCtx {
 	var sc scanner.Scanner
 	parsed, err := parse(*sc.Init(strings.NewReader(code)))

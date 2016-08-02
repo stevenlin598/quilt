@@ -126,7 +126,7 @@ func (metaSexp astSexp) eval(ctx *evalCtx) (ast, error) {
 
 	var res ast
 	switch fn := first.(type) {
-	case astIdent:
+	case astBuiltIn:
 		fnImpl := funcImplMap[fn]
 		if len(sexp)-1 < fnImpl.minArgs {
 			return nil, stitchError{metaSexp.pos,
@@ -161,12 +161,6 @@ func (metaSexp astSexp) eval(ctx *evalCtx) (ast, error) {
 }
 
 func (ident astIdent) eval(ctx *evalCtx) (ast, error) {
-	// If the ident represents a built-in function, just return the identifier.
-	// S-exp eval will know what to do with it.
-	if _, ok := funcImplMap[ident]; ok {
-		return ident, nil
-	}
-
 	if val, ok := ctx.binds[ident]; ok {
 		return val, nil
 	} else if ctx.parent == nil {
@@ -273,6 +267,10 @@ func (r astLabelRule) eval(ctx *evalCtx) (ast, error) {
 
 func (r astMachineRule) eval(ctx *evalCtx) (ast, error) {
 	return r, nil
+}
+
+func (bi astBuiltIn) eval(ctx *evalCtx) (ast, error) {
+	return bi, nil
 }
 
 func evalList(ctx *evalCtx, args []ast) ([]ast, error) {
