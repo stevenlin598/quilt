@@ -63,6 +63,7 @@ type client interface {
 	StartContainer(id string, hostConfig *dkc.HostConfig) error
 	CreateExec(opts dkc.CreateExecOptions) (*dkc.Exec, error)
 	StartExec(id string, opts dkc.StartExecOptions) error
+	InspectExec(id string) (*dkc.ExecInspect, error)
 	UploadToContainer(id string, opts dkc.UploadToContainerOptions) error
 	DownloadFromContainer(id string, opts dkc.DownloadFromContainerOptions) error
 	RemoveContainer(opts dkc.RemoveContainerOptions) error
@@ -117,16 +118,16 @@ func (dk Client) Run(opts RunOptions) (string, error) {
 
 // Exec executes a command within the container with the supplied name.
 func (dk Client) Exec(name string, cmd ...string) error {
-	_, err := dk.ExecVerbose(name, cmd...)
+	_, _, err := dk.ExecVerbose(name, cmd...)
 	return err
 }
 
 // ExecVerbose executes a command within the container with the supplied name.  It also
 // returns the output of that command.
-func (dk Client) ExecVerbose(name string, cmd ...string) ([]byte, error) {
+func (dk Client) ExecVerbose(name string, cmd ...string) ([]byte, int, error) {
 	id, err := dk.getID(name)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 
 	var inBuff, outBuff bytes.Buffer
@@ -136,7 +137,7 @@ func (dk Client) ExecVerbose(name string, cmd ...string) ([]byte, error) {
 		AttachStdout: true})
 
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 
 	err = dk.StartExec(exec.ID, dkc.StartExecOptions{
@@ -144,7 +145,12 @@ func (dk Client) ExecVerbose(name string, cmd ...string) ([]byte, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, -1, err
+	}
+
+	execInspect, err := dk.InspectExec(exec.ID)
+	if err != nil {
+		return nil, -1, err
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(inBuff.Bytes()))
@@ -152,10 +158,10 @@ func (dk Client) ExecVerbose(name string, cmd ...string) ([]byte, error) {
 		outBuff.WriteString(scanner.Text() + "\n")
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 
-	return outBuff.Bytes(), nil
+	return outBuff.Bytes(), execInspect.ExitCode, nil
 }
 
 // WriteToContainer writes the contents of SRC into the file at path DST on the

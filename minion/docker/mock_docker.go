@@ -211,6 +211,14 @@ func (dk MockClient) StartExec(id string, opts dkc.StartExecOptions) error {
 	return nil
 }
 
+// InspectExec returns low-level information about the exec command id.
+func (dk MockClient) InspectExec(id string) (*dkc.ExecInspect, error) {
+	return &dkc.ExecInspect{
+		ID:       id,
+		ExitCode: 0,
+	}, nil
+}
+
 // ResetExec clears the list of created and started executions, for use by the unit
 // tests.
 func (dk *MockClient) ResetExec() {

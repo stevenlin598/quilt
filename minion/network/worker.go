@@ -799,7 +799,7 @@ func updateOpenFlow(dk docker.Client, odb ovsdb.Client, containers []db.Containe
 
 func generateCurrentOpenFlow(dk docker.Client) (OFRuleSlice, error) {
 	args := "ovs-ofctl dump-flows " + quiltBridge
-	stdout, err := dk.ExecVerbose(supervisor.Ovsvswitchd,
+	stdout, _, err := dk.ExecVerbose(supervisor.Ovsvswitchd,
 		strings.Split(args, " ")...)
 
 	if err != nil {
