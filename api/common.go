@@ -22,3 +22,8 @@ func ParseListenAddress(lAddr string) (string, string, error) {
 	}
 	return addrParts[0], addrParts[1], nil
 }
+
+// RemoteAddress creates the address string for a remote host.
+func RemoteAddress(host string) string {
+	return fmt.Sprintf("tcp://%s:%d", host, DefaultRemotePort)
+}

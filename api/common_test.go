@@ -46,3 +46,12 @@ func TestAddrParsing(t *testing.T) {
 		errors.New("malformed listen address: /tmp/quilt.sock"))
 	checkAddrError(t, "8.8.8.8", errors.New("malformed listen address: 8.8.8.8"))
 }
+
+func TestRemoteAddress(t *testing.T) {
+	t.Parallel()
+
+	exp := "tcp://8.8.8.8:9000"
+	if res := RemoteAddress("8.8.8.8"); res != exp {
+		t.Errorf("Bad remote address result: expected %s, got %s", exp, res)
+	}
+}

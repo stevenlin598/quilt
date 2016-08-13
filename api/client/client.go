@@ -30,6 +30,9 @@ type Client interface {
 	// QueryContainers retrieves the containers tracked by the Quilt daemon.
 	QueryContainers() ([]db.Container, error)
 
+	// QueryEtcd retrieves the etcd information tracked by the Quilt daemon.
+	QueryEtcd() ([]db.Etcd, error)
+
 	// RunStitch makes a request to the Quilt daemon to execute the given stitch.
 	RunStitch(stitch string) error
 }
@@ -83,6 +86,12 @@ func query(pbClient pb.APIClient, table db.TableType) (interface{}, error) {
 			return nil, err
 		}
 		return containers, nil
+	case db.EtcdTable:
+		var etcds []db.Etcd
+		if err := json.Unmarshal(replyBytes, &etcds); err != nil {
+			return nil, err
+		}
+		return etcds, nil
 	default:
 		panic(fmt.Sprintf("unsupported table type: %s", table))
 	}
@@ -111,6 +120,16 @@ func (c clientImpl) QueryContainers() ([]db.Container, error) {
 	}
 
 	return rows.([]db.Container), nil
+}
+
+// QueryEtcd retrieves the etcd information tracked by the Quilt daemon.
+func (c clientImpl) QueryEtcd() ([]db.Etcd, error) {
+	rows, err := query(c.pbClient, db.EtcdTable)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows.([]db.Etcd), nil
 }
 
 // RunStitch makes a request to the Quilt daemon to execute the given stitch.

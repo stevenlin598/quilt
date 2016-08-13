@@ -70,6 +70,8 @@ func (s server) Query(cts context.Context, query *pb.DBQuery) (*pb.QueryReply, e
 			rows = view.SelectFromMachine(nil)
 		case db.ContainerTable:
 			rows = view.SelectFromContainer(nil)
+		case db.EtcdTable:
+			rows = view.SelectFromEtcd(nil)
 		default:
 			return fmt.Errorf("unrecognized table: %s", query.Table)
 		}

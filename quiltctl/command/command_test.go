@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/afero"
 
+	"github.com/NetSys/quilt/api"
 	"github.com/NetSys/quilt/api/client"
 	"github.com/NetSys/quilt/db"
 	"github.com/NetSys/quilt/util"
@@ -214,15 +215,21 @@ func TestSSHFlags(t *testing.T) {
 }
 
 type mockClient struct {
-	runStitchArg string
+	machineReturn []db.Machine
+	etcdReturn    []db.Etcd
+	runStitchArg  string
 }
 
 func (c *mockClient) QueryMachines() ([]db.Machine, error) {
-	return nil, nil
+	return c.machineReturn, nil
 }
 
 func (c *mockClient) QueryContainers() ([]db.Container, error) {
 	return nil, nil
+}
+
+func (c *mockClient) QueryEtcd() ([]db.Etcd, error) {
+	return c.etcdReturn, nil
 }
 
 func (c *mockClient) Close() error {
@@ -272,5 +279,97 @@ func TestRunSpec(t *testing.T) {
 	expStitch := `importSources = {};` + testSpec
 	if c.runStitchArg != expStitch {
 		t.Error("run command invoked Quilt with the wrong stitch")
+	}
+}
+
+func TestGetLeaderClient(t *testing.T) {
+	passedClient := &mockClient{}
+	getClient = func(host string) (client.Client, error) {
+		switch host {
+		// One machine doesn't know the LeaderIP
+		case api.RemoteAddress("8.8.8.8"):
+			return &mockClient{
+				etcdReturn: []db.Etcd{
+					{
+						LeaderIP: "",
+					},
+				},
+			}, nil
+		// The other machine knows the LeaderIP
+		case api.RemoteAddress("9.9.9.9"):
+			return &mockClient{
+				etcdReturn: []db.Etcd{
+					{
+						LeaderIP: "leader-priv",
+					},
+				},
+			}, nil
+		// The leader. getLeaderClient() should return an instance of this.
+		case api.RemoteAddress("leader"):
+			return passedClient, nil
+		default:
+			t.Errorf("Unexpected call to getClient with host %s", host)
+			t.Fail()
+		}
+		panic("unreached")
+	}
+
+	localClient := &mockClient{
+		machineReturn: []db.Machine{
+			{
+				PublicIP: "8.8.8.8",
+			},
+			{
+				PublicIP: "9.9.9.9",
+			},
+			{
+				PublicIP:  "leader",
+				PrivateIP: "leader-priv",
+			},
+		},
+	}
+	res, err := getLeaderClient(localClient)
+	if err != nil {
+		t.Errorf("Unexpected error when getting lead minion: %s", err.Error())
+		return
+	}
+
+	if res != passedClient {
+		t.Errorf("Didn't retrieve the proper client for the lead minion: "+
+			"expected %v, got %v", passedClient, res)
+	}
+}
+
+func TestNoLeader(t *testing.T) {
+	getClient = func(host string) (client.Client, error) {
+		// No client knows the leader IP.
+		return &mockClient{
+			etcdReturn: []db.Etcd{
+				{
+					LeaderIP: "",
+				},
+			},
+		}, nil
+	}
+
+	localClient := &mockClient{
+		machineReturn: []db.Machine{
+			{
+				PublicIP: "8.8.8.8",
+			},
+			{
+				PublicIP: "9.9.9.9",
+			},
+		},
+	}
+	_, err := getLeaderClient(localClient)
+	expErr := "no leader found"
+	if err == nil {
+		t.Errorf("Expected an error when the leader IP is not set.")
+		return
+	}
+
+	if err.Error() != expErr {
+		t.Errorf("Got wrong error: expected %s, got %s", expErr, err.Error())
 	}
 }

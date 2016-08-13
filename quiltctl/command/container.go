@@ -31,9 +31,16 @@ func (cCmd *Container) Parse(args []string) error {
 
 // Run retrieves and prints the requested containers.
 func (cCmd *Container) Run() int {
-	c, err := getClient(cCmd.host)
+	localClient, err := getClient(cCmd.host)
 	if err != nil {
 		log.Error(err)
+		return 1
+	}
+
+	c, err := getLeaderClient(localClient)
+	localClient.Close()
+	if err != nil {
+		log.WithError(err).Error("Error connecting to leader.")
 		return 1
 	}
 	defer c.Close()
