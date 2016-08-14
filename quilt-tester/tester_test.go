@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/spf13/afero"
 )
@@ -35,6 +36,8 @@ func TestCmdExec(t *testing.T) {
 }
 
 func TestWaitFor(t *testing.T) {
+	sleep = func(t time.Duration) {}
+
 	calls := 0
 	callThreeTimes := func() bool {
 		calls++
@@ -53,7 +56,7 @@ func TestWaitFor(t *testing.T) {
 
 	err = waitFor(func() bool {
 		return false
-	}, 2)
+	}, 300*time.Millisecond)
 	if err.Error() != "timed out" {
 		t.Errorf("Expected waitFor to timeout")
 	}

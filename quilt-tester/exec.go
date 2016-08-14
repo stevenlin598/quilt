@@ -17,6 +17,9 @@ import (
 	"github.com/NetSys/quilt/db"
 )
 
+// Stored in a variable so we can mock it out for unit tests.
+var sleep = time.Sleep
+
 // runSpecUntilConnected runs the given spec, and blocks until either all
 // machines have connected back to the daemon, or 500 seconds have passed.
 func runSpecUntilConnected(spec string) (string, string, error) {
@@ -41,7 +44,7 @@ func runSpecUntilConnected(spec string) (string, string, error) {
 		return true
 	}
 
-	return stdout, stderr, waitFor(allMachinesConnected, 500)
+	return stdout, stderr, waitFor(allMachinesConnected, 8*time.Minute)
 }
 
 // stop stops the given namespace, and blocks until there are no more machines
@@ -65,7 +68,7 @@ func stop(namespace string) (string, string, error) {
 		return len(instances) == 0
 	}
 
-	return stdout, stderr, waitFor(stopped, 120)
+	return stdout, stderr, waitFor(stopped, 2*time.Minute)
 }
 
 // downloadSpecs gets the given import path.
@@ -87,9 +90,9 @@ func runQuiltDaemon() {
 	execCmd(cmd, "QUILT")
 }
 
-// waitFor waits until `pred` is satisfied, or `timeout` seconds have passed.
-func waitFor(pred func() bool, timeout int) error {
-	timeoutChan := time.After(time.Duration(timeout) * time.Second)
+// waitFor waits until `pred` is satisfied, or `timeout` Duration has passed.
+func waitFor(pred func() bool, timeout time.Duration) error {
+	timeoutChan := time.After(timeout)
 	for {
 		select {
 		case <-timeoutChan:
@@ -99,7 +102,7 @@ func waitFor(pred func() bool, timeout int) error {
 				return nil
 			}
 		}
-		time.Sleep(1 * time.Second)
+		sleep(1 * time.Second)
 	}
 }
 
