@@ -373,3 +373,12 @@ func TestNoLeader(t *testing.T) {
 		t.Errorf("Got wrong error: expected %s, got %s", expErr, err.Error())
 	}
 }
+
+func TestSSHCommandCreation(t *testing.T) {
+	exp := []string{"ssh", "quilt@host", "-o", "StrictHostKeyChecking=no",
+		"-i", "~/.ssh/quilt"}
+	res := ssh("host", []string{"-i", "~/.ssh/quilt"})
+	if !reflect.DeepEqual(res.Args, exp) {
+		t.Errorf("Bad SSH command creation: expected %v, got %v.", exp, res.Args)
+	}
+}

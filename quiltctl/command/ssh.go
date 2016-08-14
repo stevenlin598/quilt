@@ -100,14 +100,7 @@ func (sCmd *SSH) Run() int {
 		return 1
 	}
 
-	baseArgs := []string{fmt.Sprintf("quilt@%s", host)}
-
-	cmd := exec.Command("ssh", append(baseArgs, sCmd.sshArgs...)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err = cmd.Run(); err != nil {
+	if err = ssh(host, sCmd.sshArgs).Run(); err != nil {
 		log.WithError(err).Error("Error executing the SSH command")
 		return 1
 	}
@@ -117,4 +110,15 @@ func (sCmd *SSH) Run() int {
 // Usage prints the usage for the ssh command.
 func (sCmd *SSH) Usage() {
 	sCmd.flags.Usage()
+}
+
+func ssh(host string, args []string) *exec.Cmd {
+	baseArgs := []string{fmt.Sprintf("quilt@%s", host),
+		"-o", "StrictHostKeyChecking=no"}
+
+	cmd := exec.Command("ssh", append(baseArgs, args...)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd
 }
