@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"os/exec"
 	"reflect"
 	"testing"
 
@@ -214,10 +215,59 @@ func TestSSHFlags(t *testing.T) {
 		errors.New("must specify a target machine"))
 }
 
+func checkExecParsing(t *testing.T, args []string, expContainer int,
+	expKey string, expCmd string, expErr error) {
+
+	execCmd := Exec{}
+	err := execCmd.Parse(args)
+
+	if expErr != nil {
+		if err.Error() != expErr.Error() {
+			t.Errorf("Expected error %s, but got %s",
+				expErr.Error(), err.Error())
+		}
+		return
+	}
+
+	if err != nil {
+		t.Errorf("Unexpected error when parsing exec args: %s", err.Error())
+		return
+	}
+
+	if execCmd.targetContainer != expContainer {
+		t.Errorf("Expected exec command to parse target container %d, but got %d",
+			expContainer, execCmd.targetContainer)
+	}
+
+	if execCmd.command != expCmd {
+		t.Errorf("Expected exec command to parse command %s, but got %s",
+			expCmd, execCmd.command)
+	}
+
+	if execCmd.privateKey != expKey {
+		t.Errorf("Expected exec command to parse private key %s, but got %s",
+			expKey, execCmd.privateKey)
+	}
+}
+
+func TestExecFlags(t *testing.T) {
+	t.Parallel()
+
+	checkExecParsing(t, []string{"1", "sh"}, 1, "", "sh", nil)
+	checkExecParsing(t, []string{"-i", "key", "1", "sh"}, 1, "key", "sh", nil)
+	checkExecParsing(t, []string{"1", "cat /etc/hosts"}, 1, "",
+		"cat /etc/hosts", nil)
+	checkExecParsing(t, []string{"1"}, 0, "", "",
+		errors.New("must specify a target container and command"))
+	checkExecParsing(t, []string{}, 0, "", "",
+		errors.New("must specify a target container and command"))
+}
+
 type mockClient struct {
-	machineReturn []db.Machine
-	etcdReturn    []db.Etcd
-	runStitchArg  string
+	machineReturn   []db.Machine
+	containerReturn []db.Container
+	etcdReturn      []db.Etcd
+	runStitchArg    string
 }
 
 func (c *mockClient) QueryMachines() ([]db.Machine, error) {
@@ -225,7 +275,7 @@ func (c *mockClient) QueryMachines() ([]db.Machine, error) {
 }
 
 func (c *mockClient) QueryContainers() ([]db.Container, error) {
-	return nil, nil
+	return c.containerReturn, nil
 }
 
 func (c *mockClient) QueryEtcd() ([]db.Etcd, error) {
@@ -380,5 +430,86 @@ func TestSSHCommandCreation(t *testing.T) {
 	res := ssh("host", []string{"-i", "~/.ssh/quilt"})
 	if !reflect.DeepEqual(res.Args, exp) {
 		t.Errorf("Bad SSH command creation: expected %v, got %v.", exp, res.Args)
+	}
+}
+
+func TestExec(t *testing.T) {
+	targetContainer := 1
+	execCmd := Exec{
+		privateKey:      "key",
+		command:         "cat /etc/hosts",
+		targetContainer: targetContainer,
+		host:            api.DefaultSocket,
+	}
+	workerHost := "worker"
+	getClient = func(host string) (client.Client, error) {
+		switch host {
+		// The local client. Used by getLeaderClient to figure out machine
+		// information.
+		case api.DefaultSocket:
+			return &mockClient{
+				machineReturn: []db.Machine{
+					{
+						PublicIP:  "leader",
+						PrivateIP: "leader-priv",
+					},
+					{
+						PrivateIP: "worker-priv",
+						PublicIP:  workerHost,
+					},
+				},
+			}, nil
+		case api.RemoteAddress("leader"):
+			return &mockClient{
+				containerReturn: []db.Container{
+					{
+						StitchID: targetContainer,
+						Minion:   "worker-priv",
+					},
+					{
+						StitchID: 5,
+						Minion:   "bad",
+					},
+				},
+				etcdReturn: []db.Etcd{
+					{
+						LeaderIP: "leader-priv",
+					},
+				},
+			}, nil
+		case api.RemoteAddress(workerHost):
+			return &mockClient{
+				containerReturn: []db.Container{
+					{
+						StitchID: targetContainer,
+						DockerID: "foo",
+					},
+				},
+			}, nil
+		default:
+			t.Errorf("Unexpected call to getClient with host %s", host)
+			t.Fail()
+		}
+		panic("unreached")
+	}
+
+	expArgs := []string{"-t", "-i", "key", "docker exec -it foo cat /etc/hosts"}
+	var sshCalled bool
+	ssh = func(host string, args []string) *exec.Cmd {
+		sshCalled = true
+		if host != workerHost {
+			t.Errorf("Bad ssh host: expected %s, but got %s",
+				workerHost, host)
+		}
+		if !reflect.DeepEqual(args, expArgs) {
+			t.Errorf("Bad ssh args: expected %v, but got %v", expArgs, args)
+		}
+		return &exec.Cmd{}
+	}
+
+	execCmd.Run()
+
+	if !sshCalled {
+		t.Errorf("Never tried SSHing")
 	}
 }

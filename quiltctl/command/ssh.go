@@ -112,7 +112,8 @@ func (sCmd *SSH) Usage() {
 	sCmd.flags.Usage()
 }
 
-func ssh(host string, args []string) *exec.Cmd {
+// Stored in a variable so we can mock it out for unit tests.
+var ssh = func(host string, args []string) *exec.Cmd {
 	baseArgs := []string{fmt.Sprintf("quilt@%s", host),
 		"-o", "StrictHostKeyChecking=no"}
 
