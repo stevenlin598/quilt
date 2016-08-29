@@ -72,6 +72,7 @@ initialize_minion() {
 	ExecStartPre=/usr/bin/docker pull %[1]s
 	ExecStart=/usr/bin/docker run --net=host --name=minion --privileged \
 	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt \
 	-v /proc:/hostproc:ro -v /var/run/netns:/var/run/netns:rw %[1]s \
 	/quilt minion
 
