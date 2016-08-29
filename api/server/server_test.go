@@ -72,7 +72,7 @@ func TestBadStitch(t *testing.T) {
 	conn := db.New()
 	s := server{dbConn: conn}
 
-	badStitch := `(+ "a" 1)`
+	badStitch := `anUndefinedVariable`
 
 	_, err := s.Run(context.Background(),
 		&pb.RunRequest{Stitch: badStitch})
@@ -82,7 +82,7 @@ func TestBadStitch(t *testing.T) {
 		return
 	}
 
-	expErr := "1: bad string concatenation argument: 1"
+	expErr := "ReferenceError: 'anUndefinedVariable' is not defined"
 	if err.Error() != expErr {
 		t.Errorf("Expected run error %s, but got %s\n", expErr, err.Error())
 	}
@@ -93,8 +93,10 @@ func TestRun(t *testing.T) {
 	s := server{dbConn: conn}
 
 	createMachineStitch :=
-		`(machine (provider "Amazon") (size "m4.large") (role "Master"))
-		(machine (provider "Amazon") (size "m4.large") (role "Worker"))`
+		`deployMachines(new Machine(
+			{provider: "Amazon", size: "m4.large", role: "Master"}));
+		deployMachines(new Machine(
+			{provider: "Amazon", size: "m4.large", role: "Worker"}));`
 
 	_, err := s.Run(context.Background(),
 		&pb.RunRequest{Stitch: createMachineStitch})

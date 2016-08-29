@@ -3,7 +3,6 @@ package inspect
 import (
 	"strings"
 	"testing"
-	"text/scanner"
 
 	"github.com/NetSys/quilt/stitch"
 )
@@ -27,21 +26,9 @@ func TestSlug(t *testing.T) {
 }
 
 func initSpec(src string) (stitch.Stitch, error) {
-	var sc scanner.Scanner
-	sc.Init(strings.NewReader(src))
-	compiled, err := stitch.Compile(sc, stitch.ImportGetter{
+	return stitch.New(src, stitch.ImportGetter{
 		Path: "../specs",
 	})
-	if err != nil {
-		return stitch.Stitch{}, err
-	}
-
-	spec, err := stitch.New(compiled)
-	if err != nil {
-		return stitch.Stitch{}, err
-	}
-
-	return spec, err
 }
 
 func TestViz(t *testing.T) {
@@ -52,12 +39,16 @@ func TestViz(t *testing.T) {
     1 -> 2
     2 -> 3
 }`
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
+	stc := `
+	function newContainer() {
+		return new Docker("ubuntu", {});
+	}
+	var a = new Label("a", [newContainer()]);
+	var b = new Label("b", [newContainer()]);
+	var c = new Label("c", [newContainer()]);
 
-(connect 22 "a" "b")
-(connect 22 "b" "c")`
+	connect(new Port(22), a, b);
+	connect(new Port(22), b, c);`
 
 	spec, err := initSpec(stc)
 	if err != nil {

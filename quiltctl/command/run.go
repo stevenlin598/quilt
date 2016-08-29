@@ -1,18 +1,15 @@
 package command
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
-	"path/filepath"
-	"text/scanner"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/robertkrimen/otto"
 
 	"github.com/NetSys/quilt/api"
 	"github.com/NetSys/quilt/stitch"
-	"github.com/NetSys/quilt/util"
 )
 
 // Run contains the options for running Stitches.
@@ -70,30 +67,14 @@ func (rCmd *Run) Run() int {
 	}
 	defer c.Close()
 
-	pathStr := stitch.GetQuiltPath()
-
-	spec := rCmd.stitch
-	f, err := util.Open(spec)
+	compiled, err := stitch.Compile(rCmd.stitch, stitch.DefaultImportGetter)
 	if err != nil {
-		f, err = util.Open(filepath.Join(pathStr, spec))
-		if err != nil {
-			log.WithError(err).Errorf("Unable to open %s.", spec)
-			return 1
+		// Print the stacktrace if it's an Otto error.
+		if ottoError, ok := err.(*otto.Error); ok {
+			log.Error(ottoError.String())
+		} else {
+			log.Error(err)
 		}
-	}
-
-	defer f.Close()
-
-	sc := scanner.Scanner{
-		Position: scanner.Position{
-			Filename: rCmd.stitch,
-		},
-	}
-
-	compiled, err := stitch.Compile(*sc.Init(bufio.NewReader(f)),
-		stitch.DefaultImportGetter)
-	if err != nil {
-		log.WithError(err).Errorf("%s failed to compile.", spec)
 		return 1
 	}
 

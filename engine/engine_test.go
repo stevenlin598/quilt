@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
-	"text/scanner"
 
 	"github.com/NetSys/quilt/db"
 	"github.com/NetSys/quilt/join"
@@ -18,15 +16,13 @@ func TestEngine(t *testing.T) {
 	spew := spew.NewDefaultConfig()
 	spew.MaxDepth = 2
 
+	pre := `var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
 	conn := db.New()
 
-	code := `
-(define Namespace "Namespace")
-(define MasterCount 2)
-(define WorkerCount 3)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32"))`
+	code := pre + `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMasters(2, baseMachine)
+	deployWorkers(3, baseMachine)`
 
 	UpdatePolicy(conn, prog(t, code))
 	err := conn.Transact(func(view db.Database) error {
@@ -58,13 +54,10 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Verify master increase. */
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 4)
-(define WorkerCount 5)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32"))`
+	code = pre + `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMasters(4, baseMachine);
+	deployWorkers(5, baseMachine);`
 
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
@@ -115,13 +108,10 @@ func TestEngine(t *testing.T) {
 	})
 
 	/* Also verify that masters and workers decrease properly. */
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32"))`
+	code = pre + `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMasters(1, baseMachine);
+	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
@@ -147,12 +137,9 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Empty Namespace does nothing. */
-	code = `
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32"))`
+	code = pre + `AdminACL = ["1.2.3.4/32"];
+	deployMasters(1, baseMachine);
+	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
@@ -178,13 +165,10 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Verify things go to zero. */
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 0)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32"))`
+	code = pre + `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMasters(0, baseMachine);
+	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
@@ -221,13 +205,13 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Test mixed providers. */
-	code = `
-	(define Namespace "Namespace")
-	(list (machine (provider "Amazon") (size "m4.large") (role "Master"))
-	      (machine (provider "Vagrant") (size "v.large") (role "Master")))
-	(list (machine (provider "Azure") (size "a.large") (role "Worker"))
-	      (machine (provider "Google") (size "g.large") (role "Worker")))
-	(define AdminACL (list "1.2.3.4/32"))`
+	code = `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMachines([
+		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
+		new Machine({provider: "Vagrant", size: "v.large", role: "Master"}),
+		new Machine({provider: "Azure", size: "a.large", role: "Worker"}),
+		new Machine({provider: "Google", size: "g.large", role: "Worker"})]);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
@@ -251,12 +235,12 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Test that machines with different providers don't match. */
-	code = `
-	(define Namespace "Namespace")
-	(list (machine (provider "Amazon") (size "m4.large") (role "Master"))
-	      (machine (provider "Azure") (size "a.large") (role "Master")))
-	(list (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-	(define AdminACL (list "1.2.3.4/32"))`
+	code = `Namespace = "Namespace";
+	AdminACL = ["1.2.3.4/32"];
+	deployMachines([
+		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
+		new Machine({provider: "Azure", size: "a.large", role: "Master"}),
+		new Machine({provider: "Amazon", size: "m4.large", role: "Worker"})]);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
@@ -313,53 +297,51 @@ func TestContainer(t *testing.T) {
 		})
 	}
 
-	code := `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))
-(label "Red"  (makeList 2 (docker "alpine")))
-(label "Blue" (makeList 2 (docker "alpine")))`
+	code := `Namespace = "Namespace";
+	deployMachines([
+		new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);
+	new Label("Red", [new Docker("alpine", {}), new Docker("alpine", {})]);
+	new Label("Blue", [new Docker("alpine", {}), new Docker("alpine", {})]);`
 	check(code, 2, 2, 0)
 
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))
-(label "Red"  (makeList 3 (docker "alpine")))`
+	code = `Namespace = "Namespace";
+	deployMachines([
+		new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);
+	new Label("Red", [new Docker("alpine", {}),
+		new Docker("alpine", {}),
+		new Docker("alpine", {})]);`
 	check(code, 3, 0, 0)
 
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))
-(label "Red"  (makeList 1 (docker "alpine")))
-(label "Blue"  (makeList 5 (docker "alpine")))
-(label "Yellow"  (makeList 10 (docker "alpine")))`
+	code = `Namespace = "Namespace";
+	deployMachines([
+		new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);
+	var alpineCreator = function() {
+		return new Docker("alpine", {});
+	}
+	new Label("Red", [new Docker("alpine", {})]);
+	new Label("Blue", _(5).times(alpineCreator));
+	new Label("Yellow", _(10).times(alpineCreator));`
 	check(code, 1, 5, 10)
 
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))
-(label "Red"  (makeList 30 (docker "alpine")))
-(label "Blue"  (makeList 4 (docker "alpine")))
-(label "Yellow"  (makeList 7 (docker "alpine")))`
+	code = `Namespace = "Namespace";
+	deployMachines([
+		new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);
+	var alpineCreator = function() {
+		return new Docker("alpine", {});
+	}
+	new Label("Red", _(30).times(alpineCreator));
+	new Label("Blue", _(4).times(alpineCreator));
+	new Label("Yellow", _(7).times(alpineCreator));`
 	check(code, 30, 4, 7)
 
-	code = `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))`
+	code = `Namespace = "Namespace";
+	deployMachines([
+		new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);`
 	check(code, 0, 0, 0)
 }
 
@@ -367,15 +349,13 @@ func TestSort(t *testing.T) {
 	spew := spew.NewDefaultConfig()
 	spew.MaxDepth = 2
 
+	pre := `var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
 	conn := db.New()
 
-	UpdatePolicy(conn, prog(t, `
-(define Namespace "Namespace")
-(define MasterCount 3)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list))`))
+	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
+	AdminACL = [];
+	deployMasters(3, baseMachine);
+	deployWorkers(1, baseMachine);`))
 	err := conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
 			return m.Role == db.Master
@@ -398,13 +378,10 @@ func TestSort(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	UpdatePolicy(conn, prog(t, `
-(define Namespace "Namespace")
-(define MasterCount 2)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list))`))
+	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
+	AdminACL = [];
+	deployMasters(2, baseMachine);
+	deployWorkers(1, baseMachine);`))
 	err = conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
 			return m.Role == db.Master
@@ -427,13 +404,10 @@ func TestSort(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	UpdatePolicy(conn, prog(t, `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (size "m4.large") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (size "m4.large") (role "Worker")))
-(define AdminACL (list))`))
+	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
+	AdminACL = [];
+	deployMasters(1, baseMachine);
+	deployWorkers(1, baseMachine);`))
 	err = conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
 			return m.Role == db.Master
@@ -463,13 +437,11 @@ func TestACLs(t *testing.T) {
 
 	conn := db.New()
 
-	code := `
-(define Namespace "Namespace")
-(define MasterCount 1)
-(define WorkerCount 1)
-(makeList MasterCount (machine (provider "Amazon") (role "Master")))
-(makeList WorkerCount (machine (provider "Amazon") (role "Worker")))
-(define AdminACL (list "1.2.3.4/32" "local"))`
+	code := `AdminACL = ["1.2.3.4/32", "local"];
+	Namespace = "Namespace";
+	deployMachines([
+	new Machine({provider: "Amazon", role: "Master"}),
+		new Machine({provider: "Amazon", role: "Worker"})]);`
 
 	myIP = func() (string, error) {
 		return "5.6.7.8", nil
@@ -548,14 +520,7 @@ func TestACLs(t *testing.T) {
 }
 
 func prog(t *testing.T, code string) stitch.Stitch {
-	var sc scanner.Scanner
-	compiled, err := stitch.Compile(*sc.Init(strings.NewReader(code)),
-		stitch.DefaultImportGetter)
-	if err != nil {
-		t.Error(err.Error())
-		return stitch.Stitch{}
-	}
-	result, err := stitch.New(compiled)
+	result, err := stitch.New(code, stitch.DefaultImportGetter)
 	if err != nil {
 		t.Error(err.Error())
 		return stitch.Stitch{}

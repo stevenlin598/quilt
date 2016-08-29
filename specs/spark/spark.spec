@@ -1,52 +1,66 @@
-(import "github.com/NetSys/quilt/specs/stdlib/strings")
+var image = "quilt/spark";
 
-(define image "quilt/spark")
+function commaSepHosts(labels) {
+    return _(labels).map(Label.prototype.hostname).join(",");
+}
 
-(define (commaSepHosts lbl)
-  (strings.Join (labelHosts lbl) ","))
+function createMasters(n, zookeeper) {
+    var containers = _(n).times(function () {
+        return new Docker(image, {args: ["run", "master"]})
+    });
 
-(define (createMasters prefix n zookeeper)
-  (let ((sparkDockers (makeList n (docker image "run" "master")))
-        // XXX: Once the Zookeeper spec is rewritten to represent the Zookeeper
-        // containers as a single label, instead of a list, this map will be
-        // replaced by a call to `commaSepHosts`.
-        (zookeeperHosts (strings.Join (map labelHost zookeeper) ",")))
-    (if zookeeper
-      (setEnv sparkDockers "ZOO" zookeeperHosts))
-    (label (sprintf "%s-ms" prefix) sparkDockers)))
+    if (zookeeper) {
+        var zookeeperHosts = commaSepHosts(zookeeper);
+        for (var i = 0 ; i<containers.length ; i++) {
+            containers[i].setEnv("ZOO", zookeeperHosts);
+        }
+    }
 
-(define (createWorkers prefix n masters)
-  (let ((masterHosts (commaSepHosts masters))
-        (sparkDockers (makeList n (docker image "run" "worker"))))
-    (setEnv sparkDockers "MASTERS" masterHosts)
-    (label (sprintf "%s-wk" prefix) sparkDockers)))
+    return new Label(_.uniqueId("spark-ms"), containers);
+}
 
-(define (link masters workers zookeeper)
-  (connect (list 1000 65535) masters workers)
-  (connect (list 1000 65535) workers workers)
-  (connect 7077 workers masters)
-  (if zookeeper
-    (connect 2181 masters zookeeper)))
+function createWorkers(n, masters) {
+    var masterHosts = masters.children().join(",");
+    var containers = _(n).times(function () {
+        return new Docker(image,
+            {
+                args: ["run", "worker"],
+                env: {"MASTERS": masterHosts},
+            })});
 
-// zookeeper: optional list of zookeeper nodes (empty list if unwanted)
-(define (New prefix nMaster nWorker zookeeper)
-  (let ((masters (createMasters prefix nMaster zookeeper))
-        (workers (createWorkers prefix nWorker masters)))
-    (if (and masters workers)
-      (progn
-        (link masters workers zookeeper)
-        (hmap ("master" masters)
-              ("worker" workers))))))
+    return new Label(_.uniqueId("spark-wk"), containers);
+}
 
-(define (Job sparkMap command)
-  (setEnv (hmapGet sparkMap "master") "JOB" command))
+function link(masters, workers, zookeeper) {
+    var allPorts = new PortRange(1000, 65535);
+    connect(allPorts, workers, masters);
+    connect(allPorts, masters, workers);
+    connect(new Port(7077), workers, masters);
+    if (zookeeper) {
+        connect(new Port(2181), masters, zookeeper);
+    }
+}
 
-(define (Exclusive sparkMap)
-  (let ((exfn (lambda (x) (labelRule "exclusive" x)))
-	(rules (map exfn (hmapValues sparkMap)))
-	(plfn (lambda (x) (place x (hmapValues sparkMap)))))
-    (map plfn rules)))
+function Spark(nMaster, nWorker, zookeeper) {
+    this.masters = createMasters(nMaster, zookeeper);
+    this.workers = createWorkers(nWorker, this.masters);
+    link(this.masters, this.workers, zookeeper);
+}
 
-(define (Public sparkMap)
-  (connect 8080 "public" (hmapGet sparkMap "master"))
-  (connect 8081 "public" (hmapGet sparkMap "worker")))
+Spark.prototype.job = function(command) {
+    var masters = this.masters.containers;
+    for (var i = 0 ; i<masters.length ; i++) {
+        masters[i].setEnv("JOB", command);
+    }
+}
+
+Spark.prototype.public = function() {
+    connect(new Port(8080), publicInternet, this.masters);
+    connect(new Port(8081), publicInternet, this.workers);
+}
+
+Spark.prototype.exclusive = function(sparkMap) {
+    place(this.masters, new LabelRule("exclusive", this.workers))
+}
+
+module.exports = Spark;

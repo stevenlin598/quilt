@@ -1,21 +1,25 @@
-(import "github.com/NetSys/quilt/specs/redis/redis") // Import redis.spec
+// Import redis.spec
+var Redis = require("github.com/NetSys/quilt/specs/redis/redis");
 
-(define nWorker 3)
+var nWorker = 3;
 
 // Boot redis with 2 workers and 1 master. AUTH_PASSWORD is used to secure
 // the redis connection
-(let ((rds (redis.New "redisexample" 2 "AUTH_PASSWORD")))
-  (redis.Exclusive rds))
+rds = new Redis(2, "AUTH_PASSWORD");
+rds.exclusive();
 
 // Using unique Namespaces will allow multiple Quilt instances to run on the
 // same cloud provider account without conflict.
-(define Namespace "CHANGE_ME")
+Namespace = "CHANGE_ME";
 
 // Defines the set of addresses that are allowed to access Quilt VMs.
-(define AdminACL (list "local"))
+AdminACL = ["local"];
 
-(let ((cfg (list (provider "Amazon")
-                 (cpu 2) (ram 2)
-                 (githubKey "YOUR_GITHUB_USERNAME"))))
-  (makeList 1 (machine (role "Master") cfg))
-  (makeList nWorker (machine (role "Worker") cfg)))
+var baseMachine = new Machine({
+    provider: "Amazon",
+    cpu: new Range(2),
+    ram: new Range(2),
+    keys: githubKeys("kklin"),
+});
+deployWorkers(nWorker, baseMachine);
+deployMasters(1, baseMachine);

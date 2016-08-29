@@ -49,10 +49,6 @@ func (inv invariant) String() string {
 	return strings.Join(tags, " ")
 }
 
-func (inv invariant) eval(ctx *evalCtx) (ast, error) {
-	return inv, nil
-}
-
 var formImpls map[invariantType]func(graph Graph, inv invariant) bool
 
 func init() {

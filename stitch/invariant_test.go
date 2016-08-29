@@ -1,41 +1,26 @@
 package stitch
 
 import (
-	"strings"
 	"testing"
-	"text/scanner"
 )
 
 func initSpec(src string) (Stitch, error) {
-	var sc scanner.Scanner
-	compiled, err := Compile(*sc.Init(strings.NewReader(src)),
-		ImportGetter{
-			Path: "../specs",
-		})
-	if err != nil {
-		return Stitch{}, err
-	}
-
-	spec, err := New(compiled)
-	if err != nil {
-		return Stitch{}, err
-	}
-
-	return spec, err
+	return New(src, ImportGetter{
+		Path: "../specs",
+	})
 }
 
 func TestReach(t *testing.T) {
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
+	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
+	var b = new Label("b", [new Docker("ubuntu", {})]);
+	var c = new Label("c", [new Docker("ubuntu", {})]);
+	connect(new Port(22), a, b);
+	connect(new Port(22), b, c);
 
-(connect 22 "a" "b")
-(connect 22 "b" "c")
-
-(invariant reach true "a" "c")
-(invariant reach false "c" "a")
-(invariant between true "a" "c" "b")
-(invariant between false "c" "a" "b")`
+	assert(new Reachable(a, c), true);
+	assert(new Reachable(c, a), false);
+	assert(new Between(a, c, b), true);
+	assert(new Between(c, a, b), false);`
 	_, err := initSpec(stc)
 	if err != nil {
 		t.Error(err)
@@ -43,15 +28,14 @@ func TestReach(t *testing.T) {
 }
 
 func TestNeighbor(t *testing.T) {
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
+	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
+	var b = new Label("b", [new Docker("ubuntu", {})]);
+	var c = new Label("c", [new Docker("ubuntu", {})]);
+	connect(new Port(22), a, b);
+	connect(new Port(22), b, c);
 
-(connect 22 "a" "b")
-(connect 22 "b" "c")
-
-(invariant reachDirect false "a" "c")
-(invariant reachDirect true "b" "c")`
+	assert(new Neighborship(a, c), false);
+	assert(new Neighborship(b, c), true);`
 	_, err := initSpec(stc)
 	if err != nil {
 		t.Error(err)
@@ -59,16 +43,16 @@ func TestNeighbor(t *testing.T) {
 }
 
 func TestAnnotation(t *testing.T) {
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
+	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
+	var b = new Label("b", [new Docker("ubuntu", {})]);
+	var c = new Label("c", [new Docker("ubuntu", {})]);
+	connect(new Port(22), a, b);
+	connect(new Port(22), b, c);
 
-(connect 22 "a" "b")
-(connect 22 "b" "c")
+	b.annotate("ACL");
 
-(annotate ACL "b")
-(invariant reachACL false "a" "c")
-`
+	assert(new ACLReachable(a, c), false);`
+
 	_, err := initSpec(stc)
 	if err != nil {
 		t.Error(err)
@@ -76,15 +60,14 @@ func TestAnnotation(t *testing.T) {
 }
 
 func TestFail(t *testing.T) {
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
+	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
+	var b = new Label("b", [new Docker("ubuntu", {})]);
+	var c = new Label("c", [new Docker("ubuntu", {})]);
+	connect(new Port(22), a, b);
+	connect(new Port(22), b, c);
 
-(connect 22 "a" "b")
-(connect 22 "b" "c")
-
-(invariant reach true "a" "c")
-(invariant reach true "c" "a")`
+	assert(new Reachable(a, c), true);
+	assert(new Reachable(c, a), true);`
 	expectedFailure := `invariant failed: reach true "c" "a"`
 	if _, err := initSpec(stc); err == nil {
 		t.Errorf("got no error, expected %s", expectedFailure)
@@ -94,20 +77,20 @@ func TestFail(t *testing.T) {
 }
 
 func TestBetween(t *testing.T) {
-	stc := `(label "a" (docker "ubuntu"))
-(label "b" (docker "ubuntu"))
-(label "c" (docker "ubuntu"))
-(label "d" (docker "ubuntu"))
-(label "e" (docker "ubuntu"))
+	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
+	var b = new Label("b", [new Docker("ubuntu", {})]);
+	var c = new Label("c", [new Docker("ubuntu", {})]);
+	var d = new Label("d", [new Docker("ubuntu", {})]);
+	var e = new Label("e", [new Docker("ubuntu", {})]);
 
-(connect 22 "a" "b")
-(connect 22 "a" "c")
-(connect 22 "b" "d")
-(connect 22 "c" "d")
-(connect 22 "d" "e")
+	connect(new Port(22), a, b);
+	connect(new Port(22), a, c);
+	connect(new Port(22), b, d);
+	connect(new Port(22), c, d);
+	connect(new Port(22), d, e);
 
-(invariant reach true "a" "e")
-(invariant between true "a" "e" "d")`
+	assert(new Reachable(a, e), true)
+	assert(new Between(a, e, d), true)`
 	_, err := initSpec(stc)
 	if err != nil {
 		t.Error(err)

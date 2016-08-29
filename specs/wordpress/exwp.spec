@@ -1,22 +1,23 @@
-(import "github.com/NetSys/quilt/specs/spark/spark")
-(import "github.com/NetSys/quilt/specs/wordpress/haproxy")
-(import "github.com/NetSys/quilt/specs/wordpress/memcached")
-(import "github.com/NetSys/quilt/specs/wordpress/mysql")
-(import "github.com/NetSys/quilt/specs/wordpress/wordpress")
-(import "github.com/NetSys/quilt/specs/zookeeper/zookeeper")
+var Spark = require("github.com/NetSys/quilt/specs/spark/spark");
+var Haproxy = require("github.com/NetSys/quilt/specs/wordpress/haproxy");
+var Memcached = ("github.com/NetSys/quilt/specs/wordpress/memcached");
+var Mysql = ("github.com/NetSys/quilt/specs/wordpress/mysql");
+var Wordpress = ("github.com/NetSys/quilt/specs/wordpress/wordpress");
+var Zookeeper = ("github.com/NetSys/quilt/specs/zookeeper/zookeeper");
 
-(define (link spark db)
-  (if (and spark db)
-    (progn
-      (connect 7077 (hmapGet spark "master") (hmapGet db "slave"))
-      (connect 7077 (hmapGet spark "worker") (hmapGet db "slave")))))
+function link(spark, db) {
+    if (spark && db) {
+        connect(new Port(7077), spark.master, db.slave);
+        connect(new Port(7077), spark.worker, db.slave);
+    }
+}
 
-(define (New zone nCache nSql nWordpress nHaproxy nSparkM nSparkW nZoo)
-  (let ((memcd (memcached.New (+ zone "-memcd") nCache))
-        (db (mysql.New (+ zone "-mysql") nSql))
-        (wp (wordpress.New (+ zone "-wp") nWordpress db memcd))
-        (hap (haproxy.New (+ zone "-hap") nHaproxy wp))
-        (zk (zookeeper.New (+ zone "-zk") nZoo))
-        (spk (spark.New (+ zone "-spk") nSparkM nSparkW zk)))
-    (link spk db)
-    hap))
+modules.exports = function(nCache, nSql, nWordpress, nHaproxy, nSparkM, nSparkW, nZoo) {
+    this.memcd = new Memcached(nCache);
+    this.db = new Mysql(nSql);
+    this.wp = new Wordpress(nWordpress, this.db, this.memcd);
+    this.hap = new Haproxy(nHaproxy, this.wp);
+    this.zk = new Zookeeper(nZoo);
+    this.spark = new Spark(nSparkM, nSparkW, this.zk);
+    link(this.spark, this.db);
+}

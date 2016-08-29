@@ -12,7 +12,7 @@ import (
 )
 
 func updatePolicy(view db.Database, role db.Role, spec string) {
-	compiled, err := stitch.New(spec)
+	compiled, err := stitch.New(spec, stitch.DefaultImportGetter)
 	if err != nil {
 		log.WithError(err).Warn("Invalid spec.")
 		return

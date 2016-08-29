@@ -88,7 +88,7 @@ func (s server) Query(cts context.Context, query *pb.DBQuery) (*pb.QueryReply, e
 }
 
 func (s server) Run(cts context.Context, runReq *pb.RunRequest) (*pb.RunReply, error) {
-	stitch, err := stitch.New(runReq.Stitch)
+	stitch, err := stitch.New(runReq.Stitch, stitch.DefaultImportGetter)
 	if err != nil {
 		return &pb.RunReply{}, err
 	}

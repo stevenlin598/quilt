@@ -1,13 +1,28 @@
-(import "github.com/NetSys/quilt/specs/stdlib/strings")
+var image = "quilt/etcd";
 
-(define image "quilt/etcd")
+module.exports = function(n) {
+    var etcdLabels = _(n).times(function(i) {
+        var label = new Label(_.uniqueId("etcd-" + i),
+                        [new Docker(image, {args: ["run"]})]);
+        label.containers[0].setEnv("HOST", label.hostname());
+        return label;
+    });
 
-(define (New prefix n)
-  (let ((labelNames (strings.Range prefix n))
-        (etcdDockers (makeList n (docker image "run")))
-        (peers (map label labelNames etcdDockers))
-        (etcdHosts (strings.Join (map labelHost labelNames) ","))
-        (mapEnvs (lambda (c h) (setEnv c "HOST" (labelHost h)))))
-    (map mapEnvs etcdDockers labelNames)
-    (setEnv etcdDockers "PEERS" etcdHosts)
-    (connect (list 1000 65535) peers peers)))
+    var peerList = [];
+    for (var i = 0 ; i<etcdLabels.length ; i++) {
+        peerList.push(etcdLabels[i].hostname());
+    }
+    var peerStr = peerList.join(",");
+
+    for (var i = 0 ; i<etcdLabels.length ; i++) {
+        etcdLabels[i].containers[0].setEnv("PEERS", peerStr);
+    }
+
+    for (var i = 0 ; i<etcdLabels.length ; i++) {
+        for (var j = 0 ; i<etcdLabels.length ; i++) {
+            connect(new PortRange(1000, 65535), etcdLabels[i], etcdLabels[j]);
+        }
+    }
+
+    this.labels = etcdLabels;
+}

@@ -1,7 +1,4 @@
-(import "github.com/NetSys/quilt/specs/stdlib/labels")
-(import "github.com/NetSys/quilt/specs/stdlib/strings")
-(import "github.com/NetSys/quilt/specs/stdlib/log")
-
+var image = "quilt/zookeeper";
 (define image "quilt/zookeeper")
 
 // generates a list of "prefix-(0 + offset)" to "prefix-(n + offset - 1)"

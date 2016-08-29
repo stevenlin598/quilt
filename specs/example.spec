@@ -1,23 +1,21 @@
 // Using unique Namespaces will allow multiple Quilt instances to run on the
 // same cloud provider account without conflict.
-(define Namespace "CHANGE_ME")
+Namespace = "kklin";
 
 // Defines the set of addresses that are allowed to access Quilt VMs.
-(define AdminACL (list "local"))
-
-// Supported providers include "Amazon", "Azure", "Google", and "Vagrant".
-(define Provider "Amazon")
+AdminACL = ["local"];
 
 // We will apply this configuration to each VM.
-(define machineCfg (list (provider Provider)
-                         (githubKey "YOUR_GITHUB_USERNAME"))) // Change Me.
+var baseMachine = new Machine({
+    provider: "Amazon", // Supported providers include "Amazon", "Azure", "Google", and "Vagrant".
+    keys: githubKeys("kklin"), // Change Me.
+});
 
-// Declare Master and Worker Machines.
-(makeList 1 (machine (role "Master") machineCfg))
-(makeList 1 (machine (role "Worker") machineCfg))
+// Create Master and Worker Machines.
+deployMasters(1, baseMachine);
+deployWorkers(2, baseMachine);
 
-// Declare Nginx Docker containers, assigning them the label "web_tier".
-(label "web_tier" (list (docker "nginx")))
+// Create a Nginx Docker container, assigning it the label "web_tier".
+var webTierLabel = new Label("web_tier", new Docker("nginx", {}));
 
-// Allow http requests from outside world to "web_tier".
-(connect 80 "public" "web_tier")
+connect(new Port(80), publicInternet, webTierLabel);

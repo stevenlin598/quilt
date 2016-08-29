@@ -1,32 +1,33 @@
-(import "github.com/NetSys/quilt/specs/stdlib/strings")
+var image = "quilt/redis";
 
-(define image "quilt/redis")
+function createMaster(auth) {
+    var masterContainer = new Docker(image, {args: ["run"]});
+    masterContainer.setEnv("AUTH", auth);
+    masterContainer.setEnv("ROLE", "master");
+    return new Label(_.uniqueId("redis-ms"), [masterContainer]);
+}
 
-(define (createMaster prefix auth)
-  (let ((master (sprintf "%s-ms" prefix))
-        (redisDocker (docker image "run")))
-    (setEnv redisDocker "AUTH" auth)
-    (setEnv redisDocker "ROLE" "master")
-    (label master redisDocker)))
+function createWorkers(n, auth, master) {
+    var workers = _(n).times(function() {
+        return new Docker(image, {args: ["run"]});
+    });
+    for (var i = 0 ; i<workers.length ; i++) {
+        workers[i].setEnv("ROLE", "worker");
+        workers[i].setEnv("MASTER", master.hostname());
+        workers[i].setEnv("AUTH", auth);
+    }
+    return new Label(_.uniqueId("redis-wk"), workers);
+}
 
-(define (createWorkers prefix n auth master)
-  (let ((labelNames (strings.Range (sprintf "%s-wk" prefix) n))
-        (redisDockers (makeList n (docker image "run"))))
-    (setEnv redisDockers "MASTER" (labelHost master))
-    (setEnv redisDockers "AUTH" auth)
-    (setEnv redisDockers "ROLE" "worker")
-    (map label labelNames redisDockers)))
+function Redis(nWorker, auth) {
+    this.master = createMaster(auth);
+    this.workers = createWorkers(nWorker, auth, this.master);
+    connect(new Port(6379), this.master, this.workers);
+    connect(new Port(6379), this.workers, this.master);
+}
 
-(define (New prefix nWorker auth)
-  (let ((master (createMaster prefix auth))
-        (workers (createWorkers prefix nWorker auth master)))
-    (connect 6379 master workers)
-    (connect 6379 workers master)
-    (hmap ("master" master)
-          ("worker" workers))))
+Redis.prototype.exclusive = function() {
+    place(this.master, new LabelRule(true, this.workers));
+}
 
-(define (Exclusive redisMap)
-  (let ((exfn (lambda (x) (labelRule "exclusive" x)))
-        (rules (map exfn (hmapValues redisMap)))
-        (plfn (lambda (x) (place x (hmapValues redisMap)))))
-    (map plfn rules)))
+module.exports = Redis;

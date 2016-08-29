@@ -229,6 +229,31 @@
 			"Rev": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d"
 		},
 		{
+			"ImportPath": "github.com/dgrijalva/jwt-go",
+			"Comment": "v3.0.0-6-g63734ea",
+			"Rev": "63734eae1ef55eaac06fdc0f312615f2e321e273"
+		},
+		{
+			"ImportPath": "github.com/ditashi/jsbeautifier-go/jsbeautifier",
+			"Rev": "2520a8026a9c0dc0d6a6da75ddd8217727626d32"
+		},
+		{
+			"ImportPath": "github.com/ditashi/jsbeautifier-go/optargs",
+			"Rev": "2520a8026a9c0dc0d6a6da75ddd8217727626d32"
+		},
+		{
+			"ImportPath": "github.com/ditashi/jsbeautifier-go/tokenizer",
+			"Rev": "2520a8026a9c0dc0d6a6da75ddd8217727626d32"
+		},
+		{
+			"ImportPath": "github.com/ditashi/jsbeautifier-go/unpackers",
+			"Rev": "2520a8026a9c0dc0d6a6da75ddd8217727626d32"
+		},
+		{
+			"ImportPath": "github.com/ditashi/jsbeautifier-go/utils",
+			"Rev": "2520a8026a9c0dc0d6a6da75ddd8217727626d32"
+		},
+		{
 			"ImportPath": "github.com/docker/docker/opts",
 			"Comment": "v1.4.1-12527-gc764234",
 			"Rev": "c764234c3b4490a7b6cd6239607996c502d9ce22"
@@ -341,6 +366,38 @@
 			"Rev": "526cf9b2b38d2f3675e34e473f2cef38e1e0565b"
 		},
 		{
+			"ImportPath": "github.com/robertkrimen/otto",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/ast",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/dbg",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/file",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/parser",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/registry",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/token",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
+			"ImportPath": "github.com/robertkrimen/otto/underscore",
+			"Rev": "7d9cbc2befca39869eb0e5bcb0f44c0692c2f8ff"
+		},
+		{
 			"ImportPath": "github.com/satori/go.uuid",
 			"Comment": "v1.0.0",
 			"Rev": "f9ab0dce87d815821e221626b772e3475a0d2749"
@@ -451,6 +508,10 @@
 			"Rev": "da88cb54a2fe4ec041612bd04b321d6a79d3ea81"
 		},
 		{
+			"ImportPath": "golang.org/x/tools/go/vcs",
+			"Rev": "5cb1c80a83ef2a98bbc7b2fba1305239bb684fbe"
+		},
+		{
 			"ImportPath": "google.golang.org/api/compute/v1",
 			"Rev": "63ade871fd3aec1225809d496e81ec91ab76ea29"
 		},
@@ -548,9 +609,14 @@
 			"Rev": "35896af9ad39c1fb1b1cd925fe3621be361e3d81"
 		},
 		{
-			"ImportPath": "github.com/dgrijalva/jwt-go",
-			"Comment": "v3.0.0-6-g63734ea",
-			"Rev": "63734eae1ef55eaac06fdc0f312615f2e321e273"
+			"ImportPath": "gopkg.in/sourcemap.v1",
+			"Comment": "v1.0.2",
+			"Rev": "8cd1e2e0ddc78dcb4511bcb184d23171bed15c67"
+		},
+		{
+			"ImportPath": "gopkg.in/sourcemap.v1/base64vlq",
+			"Comment": "v1.0.2",
+			"Rev": "8cd1e2e0ddc78dcb4511bcb184d23171bed15c67"
 		}
 	]
 }

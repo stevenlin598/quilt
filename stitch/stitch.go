@@ -1,17 +1,24 @@
 package stitch
 
 import (
+	"errors"
 	"fmt"
-	"strings"
-	"text/scanner"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/robertkrimen/otto"
+
+	// Automatically import the Javascript underscore utility-belt library into
+	// the Stitch VM.
+	_ "github.com/robertkrimen/otto/underscore"
+
+	"github.com/NetSys/quilt/util"
 )
 
 // A Stitch is an abstract representation of the policy language.
 type Stitch struct {
 	code string
-	ctx  evalCtx
+	ctx  *evalCtx
+	vm   *otto.Otto
 }
 
 // A Placement constraint guides where containers may be scheduled, either relative to
@@ -85,149 +92,149 @@ func (stitchr Range) Accepts(x float64) bool {
 	return stitchr.Min <= x && (stitchr.Max == 0 || x <= stitchr.Max)
 }
 
-func toStitch(parsed []ast) (Stitch, error) {
-	_, ctx, err := eval(astRoot(parsed))
+type evalCtx struct {
+	containers  map[int]Container
+	labels      map[string]Label
+	connections map[Connection]struct{}
+	placements  map[Placement]struct{}
+	machines    []Machine
+	invariants  []invariant
+}
+
+func run(filename string, spec string, getter ImportGetter) (*otto.Otto, error) {
+	vm := otto.New()
+	if err := vm.Set("githubKeys", githubKeysImpl); err != nil {
+		return vm, err
+	}
+	if err := vm.Set("require", getter.requireImpl); err != nil {
+		return vm, err
+	}
+	if _, err := vm.Run(JavascriptLibrary()); err != nil {
+		return vm, err
+	}
+
+	script, err := vm.Compile(filename, spec)
+	if err != nil {
+		return vm, err
+	}
+
+	if _, err := vm.Run(script); err != nil {
+		return vm, err
+	}
+
+	return vm, nil
+}
+
+// Compile transforms the Stitch at the given filepath into an executable string.
+func Compile(filepath string, getter ImportGetter) (string, error) {
+	specStr, err := util.ReadFile(filepath)
+	if err != nil {
+		return "", err
+	}
+
+	vm, err := run(filepath, specStr, getter)
+	if err != nil {
+		return "", err
+	}
+
+	imports, err := getImports(vm)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("importSources = %s;", imports) + specStr, nil
+}
+
+// FromFile gets a Stitch handle from a file on disk.
+func FromFile(filename string, getter ImportGetter) (Stitch, error) {
+	compiled, err := Compile(filename, getter)
+	if err != nil {
+		return Stitch{}, err
+	}
+	return New(compiled, getter)
+}
+
+// New parses and executes a stitch (in text form), and returns an abstract Dsl handle.
+func New(specStr string, getter ImportGetter) (Stitch, error) {
+	vm, err := run("<raw_string>", specStr, getter)
 	if err != nil {
 		return Stitch{}, err
 	}
 
-	spec := Stitch{astRoot(parsed).String(), ctx}
+	ctx, err := parseContext(vm)
+	if err != nil {
+		return Stitch{}, err
+	}
+	ctx.createPortRules()
+
+	spec := Stitch{
+		code: specStr,
+		vm:   vm,
+		ctx:  &ctx,
+	}
 	graph, err := InitializeGraph(spec)
 	if err != nil {
 		return Stitch{}, err
 	}
 
-	if err := checkInvariants(graph, *ctx.invariants); err != nil {
+	if err := checkInvariants(graph, ctx.invariants); err != nil {
 		return Stitch{}, err
 	}
 
 	return spec, nil
 }
 
-// Compile takes a Stitch (possibly with imports), and transforms it into a
-// single string that can be evaluated without other dependencies. It also
-// confirms that the result doesn't have any invariant, syntax, or evaluation
-// errors.
-func Compile(sc scanner.Scanner, getter ImportGetter) (string, error) {
-	parsed, err := parse(sc)
-	if err != nil {
-		return "", err
+func (ctx *evalCtx) createPortRules() {
+	ports := make(map[int][]string)
+	for c := range ctx.connections {
+		if c.From != PublicInternetLabel && c.To != PublicInternetLabel {
+			continue
+		}
+
+		target := c.From
+		if c.From == PublicInternetLabel {
+			target = c.To
+		}
+
+		min := c.MinPort
+		ports[min] = append(ports[min], target)
 	}
 
-	parsed, err = getter.resolveImports(parsed)
-	if err != nil {
-		return "", err
+	for _, labels := range ports {
+		for _, tgt := range labels {
+			for _, other := range labels {
+				ctx.placements[Placement{
+					Exclusive:   true,
+					TargetLabel: tgt,
+					OtherLabel:  other,
+				}] = struct{}{}
+			}
+		}
 	}
-
-	_, err = toStitch(parsed)
-
-	return astRoot(parsed).String(), err
-}
-
-// New parses and executes a stitch (in text form), and returns an abstract Dsl handle.
-func New(specStr string) (Stitch, error) {
-	var sc scanner.Scanner
-	sc.Init(strings.NewReader(specStr))
-	parsed, err := parse(sc)
-	if err != nil {
-		return Stitch{}, err
-	}
-
-	return toStitch(parsed)
 }
 
 // QueryLabels retrieves all labels declared in the Stitch.
 func (stitch Stitch) QueryLabels() []Label {
 	var res []Label
 	for _, l := range stitch.ctx.labels {
-		var ids []int
-		for _, c := range l.elems {
-			ids = append(ids, c.ID)
-		}
-
-		var annotations []string
-		for _, a := range l.annotations {
-			annotations = append(annotations, string(a))
-		}
-
-		res = append(res, Label{
-			Name:        string(l.ident),
-			IDs:         ids,
-			Annotations: annotations,
-		})
+		res = append(res, l)
 	}
 
 	return res
 }
 
 // QueryContainers retrieves all containers declared in stitch.
-func (stitch Stitch) QueryContainers() []*Container {
-	var containers []*Container
-	for _, c := range *stitch.ctx.containers {
-		var command []string
-		for _, co := range c.command {
-			command = append(command, string(co.(astString)))
-		}
-		env := make(map[string]string)
-		for key, val := range c.env {
-			env[string(key.(astString))] = string(val.(astString))
-		}
-		containers = append(containers, &Container{
-			ID:      c.ID,
-			Image:   string(c.image),
-			Command: command,
-			Env:     env,
-		})
+func (stitch Stitch) QueryContainers() []Container {
+	var containers []Container
+	for _, c := range stitch.ctx.containers {
+		containers = append(containers, c)
 	}
 	return containers
 }
 
-func parseKeys(rawKeys []key) []string {
-	var keys []string
-	for _, val := range rawKeys {
-		key, ok := val.(key)
-		if !ok {
-			log.Warnf("%s: Requested []key, found %s", key, val)
-			continue
-		}
-
-		parsedKeys, err := key.keys()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-				"key":   key,
-			}).Warning("Failed to retrieve key.")
-			continue
-		}
-
-		keys = append(keys, parsedKeys...)
-	}
-
-	return keys
-}
-
-func convertAstMachine(machineAst astMachine) Machine {
-	return Machine{
-		Provider: string(machineAst.provider),
-		Size:     string(machineAst.size),
-		Role:     string(machineAst.role),
-		Region:   string(machineAst.region),
-		RAM: Range{Min: float64(machineAst.ram.min),
-			Max: float64(machineAst.ram.max)},
-		CPU: Range{Min: float64(machineAst.cpu.min),
-			Max: float64(machineAst.cpu.max)},
-		DiskSize: int(machineAst.diskSize),
-		SSHKeys:  parseKeys(machineAst.sshKeys),
-	}
-}
-
 // QueryMachines returns all machines declared in the stitch.
 func (stitch Stitch) QueryMachines() []Machine {
-	var machines []Machine
-	for _, machineAst := range *stitch.ctx.machines {
-		machines = append(machines, convertAstMachine(*machineAst))
-	}
-	return machines
+	return stitch.ctx.machines
 }
 
 // QueryConnections returns the connections declared in the stitch.
@@ -250,58 +257,40 @@ func (stitch Stitch) QueryPlacements() []Placement {
 
 // QueryFloat returns a float value defined in the stitch.
 func (stitch Stitch) QueryFloat(key string) (float64, error) {
-	result, ok := stitch.ctx.binds[astIdent(key)]
-	if !ok {
-		return 0, fmt.Errorf("%s undefined", key)
+	value, err := stitch.vm.Get(key)
+	if err != nil {
+		return 0, err
 	}
 
-	val, ok := result.(astFloat)
-	if !ok {
-		return 0, fmt.Errorf("%s: Requested float, found %s", key, val)
+	if !value.IsNumber() {
+		return 0, errors.New("not a number")
 	}
 
-	return float64(val), nil
+	return value.ToFloat()
 }
 
 // QueryString returns a string value defined in the stitch.
 func (stitch Stitch) QueryString(key string) string {
-	result, ok := stitch.ctx.binds[astIdent(key)]
-	if !ok {
-		log.Warnf("%s undefined", key)
+	value, err := stitch.vm.Get(key)
+	if err != nil {
+		log.Warnf("Unable to find %s", key)
 		return ""
 	}
-
-	val, ok := result.(astString)
-	if !ok {
-		log.Warnf("%s: Requested string, found %s", key, val)
-		return ""
-	}
-
-	return string(val)
+	valueString, _ := value.ToString()
+	return valueString
 }
 
 // QueryStrSlice returns a string slice value defined in the stitch.
 func (stitch Stitch) QueryStrSlice(key string) []string {
-	result, ok := stitch.ctx.binds[astIdent(key)]
-	if !ok {
-		log.Warnf("%s undefined", key)
-		return nil
+	vmVal, err := stitch.vm.Get(key)
+	if err != nil {
+		log.Warnf("Unable to find %s", key)
+		return []string{}
 	}
-
-	val, ok := result.(astList)
-	if !ok {
-		log.Warnf("%s: Requested []string, found %s", key, val)
-		return nil
-	}
-
-	slice := []string{}
-	for _, val := range val {
-		str, ok := val.(astString)
-		if !ok {
-			log.Warnf("%s: Requested []string, found %s", key, val)
-			return nil
-		}
-		slice = append(slice, string(str))
+	slice, err := parseStringSlice(vmVal)
+	if err != nil {
+		log.Warnf("bad type")
+		return []string{}
 	}
 
 	return slice
@@ -312,55 +301,6 @@ func (stitch Stitch) String() string {
 	return stitch.code
 }
 
-// When an error occurs within a generated S-expression, the position field
-// doesn't get set. To circumvent this, we store a traceback of positions, and
-// use the innermost defined position to generate our error message.
-
-// For example, our error trace may look like this:
-// Line 5		 : Function call failed
-// Line 6		 : Apply failed
-// Undefined line: `a` undefined.
-
-// By using the innermost defined position, and the innermost error message,
-// our error message is "Line 6: `a` undefined", instead of
-// "Undefined line: `a` undefined.
-type stitchError struct {
-	pos scanner.Position
-	err error
-}
-
-func (stitchErr stitchError) Error() string {
-	pos := stitchErr.innermostPos()
-	err := stitchErr.innermostError()
-	if pos.Filename == "" {
-		return fmt.Sprintf("%d: %s", pos.Line, err)
-	}
-	return fmt.Sprintf("%s:%d: %s", pos.Filename, pos.Line, err)
-}
-
-// innermostPos returns the most nested position that is non-zero.
-func (stitchErr stitchError) innermostPos() scanner.Position {
-	childErr, ok := stitchErr.err.(stitchError)
-	if !ok {
-		return stitchErr.pos
-	}
-
-	innerPos := childErr.innermostPos()
-	if innerPos.Line == 0 {
-		return stitchErr.pos
-	}
-	return innerPos
-}
-
-func (stitchErr stitchError) innermostError() error {
-	switch childErr := stitchErr.err.(type) {
-	case stitchError:
-		return childErr.innermostError()
-	default:
-		return childErr
-	}
-}
-
 // Get returns the value contained at the given index
 func (cs ConnectionSlice) Get(ii int) interface{} {
 	return cs[ii]
@@ -369,4 +309,17 @@ func (cs ConnectionSlice) Get(ii int) interface{} {
 // Len returns the number of items in the slice
 func (cs ConnectionSlice) Len() int {
 	return len(cs)
+}
+
+func stitchError(vm *otto.Otto, err error) {
+	panic(vm.MakeCustomError("StitchError", err.Error()))
+}
+
+// Otto uses `panic` with `*otto.Error`s to signify Javascript runtime errors.
+// This function asserts that the given error is safe to panic.
+func assertOttoError(err error) error {
+	if _, ok := err.(*otto.Error); err == nil || ok {
+		return err
+	}
+	panic("Only otto errors can be returned. Got: " + err.Error())
 }

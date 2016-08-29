@@ -59,9 +59,9 @@ func (sCmd *Stop) Parse(args []string) error {
 // Run stops the given namespace.
 func (sCmd *Stop) Run() int {
 	namespace := sCmd.namespace
-	specStr := "(define AdminACL (list))"
+	specStr := "AdminACL = [];"
 	if namespace != "" {
-		specStr += fmt.Sprintf(` (define Namespace "%s")`, namespace)
+		specStr += fmt.Sprintf(`Namespace = "%s";`, namespace)
 	}
 
 	c, err := getClient(sCmd.host)

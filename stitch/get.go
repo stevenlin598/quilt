@@ -1,19 +1,17 @@
 package stitch
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"golang.org/x/tools/go/vcs"
 	"os"
 	"os/user"
 	"path/filepath"
-	"text/scanner"
 
 	"github.com/NetSys/quilt/util"
 
 	log "github.com/Sirupsen/logrus"
 
+	"github.com/robertkrimen/otto"
 	"github.com/spf13/afero"
 )
 
@@ -97,19 +95,7 @@ func (getter ImportGetter) checkSpec(file string, _ os.FileInfo, _ error) error 
 	if filepath.Ext(file) != ".spec" {
 		return nil
 	}
-	f, err := util.Open(file)
-
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	sc := scanner.Scanner{
-		Position: scanner.Position{
-			Filename: file,
-		},
-	}
-	_, err = Compile(*sc.Init(bufio.NewReader(f)),
+	_, err := Compile(file,
 		ImportGetter{
 			Path:         getter.Path,
 			AutoDownload: true,
@@ -117,101 +103,112 @@ func (getter ImportGetter) checkSpec(file string, _ os.FileInfo, _ error) error 
 	return err
 }
 
-func (getter ImportGetter) get(name string) (scanner.Scanner, error) {
+func (getter ImportGetter) get(name string) (string, error) {
 	modulePath := filepath.Join(getter.Path, name+".spec")
 	if _, err := os.Stat(modulePath); os.IsNotExist(err) && getter.AutoDownload {
 		getter.Download(name)
 	}
 
-	var sc scanner.Scanner
-	f, err := util.Open(modulePath)
+	spec, err := util.ReadFile(modulePath)
 	if err != nil {
-		return sc, fmt.Errorf("unable to open import %s (path=%s)",
+		return "", fmt.Errorf("unable to open import %s (path=%s)",
 			name, modulePath)
 	}
-	sc.Filename = modulePath
-	sc.Init(bufio.NewReader(f))
-	return sc, nil
+	return spec, nil
 }
 
-func (getter ImportGetter) resolveImports(asts []ast) ([]ast, error) {
-	return getter.resolveImportsRec(asts, nil)
+type importSources map[string]string
+
+const importSourcesKey = "importSources"
+
+// XXX: Error on import cycles.
+func (getter ImportGetter) requireImpl(call otto.FunctionCall) otto.Value {
+	if len(call.ArgumentList) < 1 {
+		panic(call.Otto.MakeRangeError(
+			"require requires the import as an argument"))
+	}
+	name, err := call.Argument(0).ToString()
+	if err != nil {
+		panic(err)
+	}
+
+	vm := call.Otto
+	imports, err := getImports(vm)
+	if err != nil {
+		panic(err)
+	}
+
+	impStr, ok := imports[name]
+	if !ok {
+		impStr, err = getter.get(name)
+		if err != nil {
+			stitchError(vm, err)
+		}
+		if err := setImport(vm, name, impStr); err != nil {
+			panic(err)
+		}
+	}
+
+	// The function declaration must be prepended to the first line of the
+	// import or else stacktraces will show an offset line number.
+	exec := "(function() {" +
+		"var module={exports: {}};" +
+		"(function(module, exports) {" +
+		impStr +
+		"})(module, module.exports);" +
+		"return module.exports" +
+		"})()"
+	script, err := vm.Compile(name, exec)
+	if err != nil {
+		panic(err)
+	}
+
+	module, err := vm.Run(script)
+	if err != nil {
+		panic(err)
+	}
+	return module
 }
 
-func (getter ImportGetter) resolveImportsRec(
-	asts []ast, imported []string) ([]ast, error) {
-
-	var newAsts []ast
-	top := true // Imports are required to be at the top of the file.
-
-	for _, ast := range asts {
-		name := parseImport(ast)
-		if name == "" {
-			newAsts = append(newAsts, ast)
-			top = false
-			continue
-		}
-
-		if !top {
-			return nil, errors.New(
-				"import must be at the beginning of the module")
-		}
-
-		// Check for any import cycles.
-		for _, importedModule := range imported {
-			if name == importedModule {
-				return nil, fmt.Errorf("import cycle: %s",
-					append(imported, name))
-			}
-		}
-
-		moduleScanner, err := getter.get(name)
-		if err != nil {
-			return nil, err
-		}
-
-		parsed, err := parse(moduleScanner)
-		if err != nil {
-			return nil, err
-		}
-
-		// Rename module name to last name in import path
-		name = filepath.Base(name)
-		parsed, err = getter.resolveImportsRec(parsed, append(imported, name))
-		if err != nil {
-			return nil, err
-		}
-
-		module := astModule{body: parsed, moduleName: astString(name)}
-		newAsts = append(newAsts, module)
+func setImport(vm *otto.Otto, moduleName, moduleContents string) error {
+	imports, getImportsErr := getImports(vm)
+	if getImportsErr != nil {
+		// If this is the first import we're setting, the map won't exist yet.
+		imports = make(map[string]string)
 	}
-
-	return newAsts, nil
+	imports[moduleName] = moduleContents
+	importSourcesVal, err := vm.ToValue(imports)
+	if err != nil {
+		return assertOttoError(err)
+	}
+	return assertOttoError(vm.Set(importSourcesKey, importSourcesVal))
 }
 
-func parseImport(ast ast) string {
-	sexp, ok := ast.(astSexp)
-	if !ok {
-		return ""
+func getImports(vm *otto.Otto) (importSources, error) {
+	imports := make(map[string]string)
+	importsVal, err := vm.Get(importSourcesKey)
+	if err != nil {
+		return imports, assertOttoError(err)
 	}
 
-	if len(sexp.sexp) < 1 {
-		return ""
+	if importsVal.IsUndefined() {
+		return imports, nil
 	}
 
-	fnName, ok := sexp.sexp[0].(astBuiltIn)
-	if !ok {
-		return ""
-	}
+	err = forField(importsVal,
+		func(importName string, importVal otto.Value) (err error) {
+			imports[importName], err = importVal.ToString()
+			return err
+		})
+	return imports, assertOttoError(err)
+}
 
-	if fnName != "import" {
-		return ""
+func (imports importSources) String() string {
+	importSourcesStr := "{"
+	for impName, impSrc := range imports {
+		importSourcesStr += fmt.Sprintf("%q: %q,",
+			impName, impSrc)
 	}
-
-	name, ok := sexp.sexp[1].(astString)
-	if !ok {
-		return ""
-	}
-
-	return string(name)
+	importSourcesStr += "}"
+	return importSourcesStr
 }

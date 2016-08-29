@@ -1,10 +1,8 @@
 package inspect
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"text/scanner"
 
 	"github.com/NetSys/quilt/stitch"
 )
@@ -31,25 +29,7 @@ func Main(opts []string) int {
 
 	configPath := opts[0]
 
-	f, err := os.Open(configPath)
-	if err != nil {
-		fmt.Println(err)
-		return 1
-	}
-	defer f.Close()
-
-	sc := scanner.Scanner{
-		Position: scanner.Position{
-			Filename: configPath,
-		},
-	}
-	compiled, err := stitch.Compile(*sc.Init(bufio.NewReader(f)),
-		stitch.DefaultImportGetter)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	spec, err := stitch.New(compiled)
+	spec, err := stitch.FromFile(configPath, stitch.DefaultImportGetter)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -105,6 +105,18 @@ func WriteFile(filename string, data []byte, perm os.FileMode) error {
 	return a.WriteFile(filename, data, perm)
 }
 
+// ReadFile returns the contents of `filename`.
+func ReadFile(filename string) (string, error) {
+	a := afero.Afero{
+		Fs: AppFs,
+	}
+	fileBytes, err := a.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	return string(fileBytes), nil
+}
+
 // StrSliceEqual returns true of the string slices 'x' and 'y' are identical.
 func StrSliceEqual(x, y []string) bool {
 	if len(x) != len(y) {

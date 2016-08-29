@@ -1,25 +1,43 @@
-(import "github.com/NetSys/quilt/quilt-tester/config/infrastructure")
-(import "github.com/NetSys/quilt/specs/spark/spark") // Import spark.spec
+// Import spark.spec
+var Spark = require("github.com/NetSys/quilt/specs/spark/spark");
 
 // We will have three worker machines.
-(define nWorker 3)
-
-// Using unique Namespaces will allow multiple Quilt instances to run on the
-// same cloud provider account without conflict.
-(define Namespace "REPLACED_IN_TEST_RUN")
-
-// Defines the set of addresses that are allowed to access Quilt VMs.
-(define AdminACL (list "local"))
+var nWorker = 3;
 
 // Application
 // spark.Exclusive enforces that no two Spark containers should be on the
 // same node. spark.Public says that the containers should be allowed to talk
 // on the public internet. spark.Job causes Spark to run that job when it
 // boots.
-(let ((sprk (spark.New "spark" 1 nWorker (list))))
-     (spark.Exclusive sprk)
-     (spark.Public sprk)
-     (spark.Job sprk "run-example SparkPi"))
+var sprk = new Spark(1, nWorker);
+sprk.exclusive()
+sprk.public()
+sprk.job("run-example SparkPi");
 
-(invariant reach true "public" "spark-ms")
-(invariant enough)
+// Infrastructure
+
+// Using unique Namespaces will allow multiple Quilt instances to run on the
+// same cloud provider account without conflict.
+Namespace = "REPLACED_IN_TEST_RUN";
+
+// Defines the set of addresses that are allowed to access Quilt VMs.
+AdminACL = ["local"]
+
+var baseMachine = new Machine({
+    provider: "Amazon",
+    region: "us-west-1",
+    size: "m4.large",
+    diskSize: 32,
+    keys: githubKeys("kklin"),
+});
+deployMachines(
+    _(nWorker + 1).times(function () {
+        return baseMachine.withRole("Worker");
+    }));
+deployMachines(
+    _(1).times(function () {
+        return baseMachine.withRole("Master");
+    }));
+
+assert(new Reachable(publicInternet, sprk.masters), true)
+assert(new Enough(), true)
