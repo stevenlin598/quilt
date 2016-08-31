@@ -335,7 +335,9 @@ func updateWorkerDBC(view db.Database, self db.Minion, etcdData storeData) {
 }
 
 func updateDBLabels(view db.Database, etcdData storeData) {
-	// Gather all of the label keys and the IPs for single host labels
+	// Gather all of the label keys and IPs for single host labels, and IPs of
+	// the containers in a given label.
+	containerIPs := map[string][]string{}
 	labelIPs := map[string]string{}
 	labelKeys := map[string]struct{}{}
 	for _, c := range etcdData.containers {
@@ -344,6 +346,11 @@ func updateDBLabels(view db.Database, etcdData storeData) {
 			if _, ok := etcdData.multiHost[l]; !ok {
 				labelIPs[l] = c.IP
 			}
+
+			// The ordering of IPs between function calls will be consistent
+			// because the containers are sorted by their StitchIDs when
+			// inserted into etcd.
+			containerIPs[l] = append(containerIPs[l], c.IP)
 		}
 	}
 
@@ -377,6 +384,7 @@ func updateDBLabels(view db.Database, etcdData storeData) {
 			dbl.IP = labelIPs[dbl.Label]
 			dbl.MultiHost = false
 		}
+		dbl.ContainerIPs = containerIPs[dbl.Label]
 
 		view.Commit(dbl)
 	}

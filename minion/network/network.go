@@ -218,14 +218,22 @@ func getACLConnections(connections []db.Connection, labels []db.Label,
 			fromIPs = append(fromIPs, fromIP)
 		}
 
-		toIP := labelMap[conn.To].IP
-		if toIP == "" || len(fromIPs) == 0 {
+		var toIPs []string
+		toLabel := labelMap[conn.To]
+		for _, toIP := range append(toLabel.ContainerIPs, toLabel.IP) {
+			if toIP == "" {
+				continue
+			}
+			toIPs = append(toIPs, toIP)
+		}
+
+		if len(toIPs) == 0 || len(fromIPs) == 0 {
 			continue
 		}
 
 		res = append(res, aclConnection{
 			fromIPs: fromIPs,
-			toIPs:   []string{toIP},
+			toIPs:   toIPs,
 			minPort: conn.MinPort,
 			maxPort: conn.MaxPort,
 		})

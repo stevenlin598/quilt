@@ -414,16 +414,32 @@ func testUpdateDBLabels(t *testing.T, view db.Database) {
 		containers: containerSlice,
 		multiHost:  labelStruct,
 	})
-	lip := map[string]string{}
 
+	type labelIPs struct {
+		labelIP      string
+		containerIPs []string
+	}
+	lip := map[string]labelIPs{}
 	for _, l := range view.SelectFromLabel(nil) {
 		if _, ok := lip[l.Label]; ok {
 			t.Errorf("Duplicate labels in the DB: %s", l.Label)
 		}
-		lip[l.Label] = l.IP
+		lip[l.Label] = labelIPs{
+			labelIP:      l.IP,
+			containerIPs: l.ContainerIPs,
+		}
 	}
 
-	resultLabels := map[string]string{"a": "10.0.0.2", "b": "10.0.0.3"}
+	resultLabels := map[string]labelIPs{
+		"a": {
+			labelIP:      "10.0.0.2",
+			containerIPs: []string{"10.0.0.3", "10.0.0.4"},
+		},
+		"b": {
+			labelIP:      "10.0.0.3",
+			containerIPs: []string{"10.0.0.3"},
+		},
+	}
 
 	if !eq(lip, resultLabels) {
 		t.Error(spew.Sprintf("Found: %v\nExpected: %v\n", lip, labelStruct))

@@ -2,23 +2,24 @@
 
 (define image "quilt/spark")
 
-(define (commaSepHosts labels)
-  (strings.Join (map labelHost labels) ","))
+(define (commaSepHosts lbl)
+  (strings.Join (labelHosts lbl) ","))
 
 (define (createMasters prefix n zookeeper)
-  (let ((labelNames (strings.Range (sprintf "%s-ms" prefix) n))
-        (zooHosts (commaSepHosts zookeeper))
-        (sparkDockers (makeList n (docker image "run" "master"))))
+  (let ((sparkDockers (makeList n (docker image "run" "master")))
+        // XXX: Once the Zookeeper spec is rewritten to represent the Zookeeper
+        // containers as a single label, instead of a list, this map will be
+        // replaced by a call to `commaSepHosts`.
+        (zookeeperHosts (strings.Join (map labelHost zookeeper) ",")))
     (if zookeeper
-      (setEnv sparkDockers "ZOO" zooHosts))
-    (map label labelNames sparkDockers)))
+      (setEnv sparkDockers "ZOO" zookeeperHosts))
+    (label (sprintf "%s-ms" prefix) sparkDockers)))
 
 (define (createWorkers prefix n masters)
-  (let ((labelNames (strings.Range (sprintf "%s-wk" prefix) n))
-        (masterHosts (commaSepHosts masters))
+  (let ((masterHosts (commaSepHosts masters))
         (sparkDockers (makeList n (docker image "run" "worker"))))
     (setEnv sparkDockers "MASTERS" masterHosts)
-    (map label labelNames sparkDockers)))
+    (label (sprintf "%s-wk" prefix) sparkDockers)))
 
 (define (link masters workers zookeeper)
   (connect (list 1000 65535) masters workers)

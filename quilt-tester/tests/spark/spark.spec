@@ -21,5 +21,5 @@
      (spark.Public sprk)
      (spark.Job sprk "run-example SparkPi"))
 
-(invariant reach true "public" "spark-ms-0")
+(invariant reach true "public" "spark-ms")
 (invariant enough)

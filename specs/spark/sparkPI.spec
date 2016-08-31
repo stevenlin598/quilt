@@ -29,5 +29,5 @@
      (makeList 1 (machine (role "Master") cfg))
      (makeList (+ 1 nWorker) (machine (role "Worker") cfg)))
 
-(invariant reach true "public" "spark-ms-0")
+(invariant reach true "public" "spark-ms")
 (invariant enough)

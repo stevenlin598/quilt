@@ -1078,14 +1078,14 @@ func updateNameservers(dk docker.Client, containers []db.Container) {
 func updateEtcHosts(dk docker.Client, containers []db.Container, labels []db.Label,
 	connections []db.Connection) {
 
-	/* Map label name to its IP. */
-	labelIP := make(map[string]string)
+	/* Map label name to the label itself. */
+	labelMap := make(map[string]db.Label)
 
 	/* Map label to a list of all labels it connect to. */
 	conns := make(map[string][]string)
 
 	for _, l := range labels {
-		labelIP[l.Label] = l.IP
+		labelMap[l.Label] = l
 	}
 
 	for _, conn := range connections {
@@ -1105,7 +1105,7 @@ func updateEtcHosts(dk docker.Client, containers []db.Container, labels []db.Lab
 			return
 		}
 
-		newHosts := generateEtcHosts(dbc, labelIP, conns)
+		newHosts := generateEtcHosts(dbc, labelMap, conns)
 
 		if newHosts != currHosts {
 			err = dk.WriteToContainer(id, newHosts, "/etc", "hosts", 0644)
@@ -1116,7 +1116,7 @@ func updateEtcHosts(dk docker.Client, containers []db.Container, labels []db.Lab
 	}
 }
 
-func generateEtcHosts(dbc db.Container, labelIP map[string]string,
+func generateEtcHosts(dbc db.Container, labels map[string]db.Label,
 	conns map[string][]string) string {
 
 	type entry struct {
@@ -1147,8 +1147,14 @@ func generateEtcHosts(dbc db.Container, labelIP map[string]string,
 			if toLabel == stitch.PublicInternetLabel {
 				continue
 			}
-			if ip := labelIP[toLabel]; ip != "" {
+
+			if ip := labels[toLabel].IP; ip != "" {
 				newHosts[entry{ip, toLabel + ".q"}] = struct{}{}
+			}
+			for i, cIP := range labels[toLabel].ContainerIPs {
+				// The hostname prefix starts from 1 for readability.
+				host := fmt.Sprintf("%d.%s.q", i+1, toLabel)
+				newHosts[entry{cIP, host}] = struct{}{}
 			}
 		}
 	}

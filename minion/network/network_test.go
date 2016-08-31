@@ -128,10 +128,10 @@ func TestACLUpdate(t *testing.T) {
 		MinPort: 80,
 		MaxPort: 81,
 	}
-	checkACLCount(t, client, []db.Connection{redBlueConnection}, 10)
+	checkACLCount(t, client, []db.Connection{redBlueConnection}, 18)
 	checkACLCount(t, client,
-		[]db.Connection{redBlueConnection, redYellowConnection}, 26)
-	checkACLCount(t, client, []db.Connection{redYellowConnection}, 18)
+		[]db.Connection{redBlueConnection, redYellowConnection}, 54)
+	checkACLCount(t, client, []db.Connection{redYellowConnection}, 42)
 	checkACLCount(t, client, nil, 2)
 }
 
@@ -237,20 +237,24 @@ var blueContainerIP = "100.1.1.2"
 var yellowContainerIP = "100.1.1.3"
 
 var redLabel = db.Label{
-	Label: "red",
-	IP:    redLabelIP,
+	Label:        "red",
+	IP:           redLabelIP,
+	ContainerIPs: []string{redContainerIP},
 }
 var blueLabel = db.Label{
-	Label: "blue",
-	IP:    blueLabelIP,
+	Label:        "blue",
+	IP:           blueLabelIP,
+	ContainerIPs: []string{blueContainerIP},
 }
 var yellowLabel = db.Label{
-	Label: "yellow",
-	IP:    yellowLabelIP,
+	Label:        "yellow",
+	IP:           yellowLabelIP,
+	ContainerIPs: []string{yellowContainerIP},
 }
 var redBlueLabel = db.Label{
-	Label: "redBlue",
-	IP:    redBlueLabelIP,
+	Label:        "redBlue",
+	IP:           redBlueLabelIP,
+	ContainerIPs: []string{redContainerIP, blueContainerIP},
 }
 var allLabels = []db.Label{redLabel, blueLabel, yellowLabel, redBlueLabel}
 
@@ -289,7 +293,7 @@ func TestConnectionBreakdown(t *testing.T) {
 		[]aclConnection{
 			{
 				fromIPs: []string{redContainerIP},
-				toIPs:   []string{blueLabelIP},
+				toIPs:   []string{blueContainerIP, blueLabelIP},
 				minPort: 80,
 				maxPort: 81,
 			},
@@ -311,7 +315,7 @@ func TestConnectionBreakdown(t *testing.T) {
 		[]aclConnection{
 			{
 				fromIPs: []string{redContainerIP, blueContainerIP},
-				toIPs:   []string{yellowLabelIP},
+				toIPs:   []string{yellowContainerIP, yellowLabelIP},
 				minPort: 80,
 				maxPort: 80,
 			},
@@ -339,13 +343,13 @@ func TestConnectionBreakdown(t *testing.T) {
 		[]aclConnection{
 			{
 				fromIPs: []string{redContainerIP, blueContainerIP},
-				toIPs:   []string{yellowLabelIP},
+				toIPs:   []string{yellowContainerIP, yellowLabelIP},
 				minPort: 80,
 				maxPort: 80,
 			},
 			{
 				fromIPs: []string{redContainerIP},
-				toIPs:   []string{blueLabelIP},
+				toIPs:   []string{blueContainerIP, blueLabelIP},
 				minPort: 80,
 				maxPort: 81,
 			},
@@ -367,7 +371,8 @@ func TestConnectionBreakdown(t *testing.T) {
 		[]aclConnection{
 			{
 				fromIPs: []string{yellowContainerIP},
-				toIPs:   []string{redBlueLabelIP},
+				toIPs: []string{redContainerIP, blueContainerIP,
+					redBlueLabelIP},
 				minPort: 80,
 				maxPort: 80,
 			},

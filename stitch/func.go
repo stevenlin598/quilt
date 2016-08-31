@@ -68,6 +68,7 @@ func init() {
 		"labelRule":        {labelRuleImpl, 1, false},
 		"labelName":        {labelNameImpl, 1, false},
 		"labelHost":        {labelHostImpl, 1, false},
+		"labelHosts":       {labelHostsImpl, 1, false},
 		"lambda":           {lambdaImpl, 2, true},
 		"let":              {letImpl, 1, true},
 		"len":              {lenImpl, 1, false},
@@ -635,6 +636,21 @@ func labelNameImpl(ctx *evalCtx, args []ast) (ast, error) {
 		return nil, fmt.Errorf("labelName applies to labels: %s", args[0])
 	}
 	return label.ident, nil
+}
+
+func labelHostsImpl(ctx *evalCtx, args []ast) (ast, error) {
+	label, ok := ctx.resolveLabel(args[0])
+	if !ok {
+		return nil, fmt.Errorf("labelHosts applies to labels: %s", args[0])
+	}
+
+	var hostnames []ast
+	for i := range label.elems {
+		hostname := fmt.Sprintf("%d.%s.q", i+1, string(label.ident))
+		hostnames = append(hostnames, astString(hostname))
+	}
+
+	return astList(hostnames), nil
 }
 
 func labelHostImpl(ctx *evalCtx, args []ast) (ast, error) {

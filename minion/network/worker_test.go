@@ -30,12 +30,15 @@ func TestImplementsSingleLabel(t *testing.T) {
 	dbc := db.Container{
 		ID:       2,
 		DockerID: "abcdefghijklmnopqrstuvwxyz",
-		IP:       "1.1.1.1",
+		IP:       "1.2.2.2",
 		Labels:   []string{"red"},
 	}
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         abcdefghijkl
+	exp := `1.1.1.1         1.green.q
+1.2.2.2         abcdefghijkl
+1.3.3.3         1.blue.q
+1.4.4.4         2.blue.q
 10.0.0.2        blue.q
 10.0.0.3        green.q` + localhosts()
 
@@ -50,12 +53,18 @@ func TestImplementsMultipleLabels(t *testing.T) {
 	dbc := db.Container{
 		ID:       3,
 		DockerID: "abcdefghijklmnopqrstuvwxyz",
-		IP:       "1.1.1.1",
+		IP:       "1.3.3.3",
 		Labels:   []string{"red", "blue"},
 	}
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         abcdefghijkl
+	exp := `1.1.1.1         1.green.q
+1.2.2.2         1.red.q
+1.3.3.3         1.blue.q
+1.3.3.3         2.red.q
+1.3.3.3         abcdefghijkl
+1.4.4.4         2.blue.q
+1.4.4.4         3.red.q
 10.0.0.1        red.q
 10.0.0.2        blue.q
 10.0.0.3        green.q` + localhosts()
@@ -73,14 +82,20 @@ func TestDuplicateConnections(t *testing.T) {
 	dbc := db.Container{
 		ID:       4,
 		DockerID: "abcdefghijklmnopqrstuvwxyz",
-		IP:       "1.1.1.1",
+		IP:       "1.4.4.4",
 		Labels:   []string{"red", "blue"},
 	}
 
 	connections["blue"] = append(connections["blue"], "green")
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         abcdefghijkl
+	exp := `1.1.1.1         1.green.q
+1.2.2.2         1.red.q
+1.3.3.3         1.blue.q
+1.3.3.3         2.red.q
+1.4.4.4         2.blue.q
+1.4.4.4         3.red.q
+1.4.4.4         abcdefghijkl
 10.0.0.1        red.q
 10.0.0.2        blue.q
 10.0.0.3        green.q` + localhosts()
@@ -305,12 +320,21 @@ func TestMakeOFRule(t *testing.T) {
 	}
 }
 
-func defaultLabelsConnections() (map[string]string, map[string][]string) {
+func defaultLabelsConnections() (map[string]db.Label, map[string][]string) {
 
-	labels := map[string]string{
-		"red":   "10.0.0.1",
-		"blue":  "10.0.0.2",
-		"green": "10.0.0.3",
+	labels := map[string]db.Label{
+		"red": {
+			IP:           "10.0.0.1",
+			ContainerIPs: []string{"1.2.2.2", "1.3.3.3", "1.4.4.4"},
+		},
+		"blue": {
+			IP:           "10.0.0.2",
+			ContainerIPs: []string{"1.3.3.3", "1.4.4.4"},
+		},
+		"green": {
+			IP:           "10.0.0.3",
+			ContainerIPs: []string{"1.1.1.1"},
+		},
 	}
 
 	connections := map[string][]string{
