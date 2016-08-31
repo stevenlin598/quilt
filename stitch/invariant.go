@@ -2,22 +2,23 @@ package stitch
 
 import (
 	"fmt"
+	"strings"
 )
 
-type invariantType int
+type invariantType string
 
 const (
 	// Reachability (reach): two arguments, <from> <to...>
-	reachInvariant = iota
+	reachInvariant = "reach"
 	// Neighborship (reach-direct): two arguments, <from> <to>
-	neighborInvariant
+	neighborInvariant = "reachDirect"
 	// Reachability, don't pass through ACL-annotated nodes (reachACL):
 	// two arguments, <from> <to...>
-	reachACLInvariant
+	reachACLInvariant = "reachACL"
 	// On-pathness (between): three arguments, <from> <to> <between>
-	betweenInvariant
+	betweenInvariant = "between"
 	// Schedulability (enough): zero arguments
-	schedulabilityInvariant
+	schedulabilityInvariant = "enough"
 )
 
 // Annotations.
@@ -25,33 +26,36 @@ const (
 	aclAnnotation = "ACL"
 )
 
+type invariantError struct {
+	failer invariant
+}
+
+func (invErr invariantError) Error() string {
+	return fmt.Sprintf("invariant failed: %s", invErr.failer)
+}
+
 type invariant struct {
 	form   invariantType
 	target bool     // Desired answer to invariant question.
 	nodes  []string // Nodes the invariant operates on.
-	str    string   // Original invariant text.
 }
 
-func (i invariant) String() string {
-	return i.str
+func (inv invariant) String() string {
+	tags := []string{string(inv.form)}
+	tags = append(tags, fmt.Sprintf("%t", inv.target))
+	for _, node := range inv.nodes {
+		tags = append(tags, fmt.Sprintf("%q", node))
+	}
+	return strings.Join(tags, " ")
 }
 
-func (i invariant) eval(ctx *evalCtx) (ast, error) {
-	return i, nil
+func (inv invariant) eval(ctx *evalCtx) (ast, error) {
+	return inv, nil
 }
 
-var formKeywords map[string]invariantType
 var formImpls map[invariantType]func(graph Graph, inv invariant) bool
 
 func init() {
-	formKeywords = map[string]invariantType{
-		"reach":       reachInvariant,
-		"reachDirect": neighborInvariant,
-		"reachACL":    reachACLInvariant,
-		"between":     betweenInvariant,
-		"enough":      schedulabilityInvariant,
-	}
-
 	formImpls = map[invariantType]func(graph Graph, inv invariant) bool{
 		reachInvariant:          reachImpl,
 		neighborInvariant:       neighborImpl,
@@ -61,14 +65,14 @@ func init() {
 	}
 }
 
-func checkInvariants(graph Graph, invs []invariant) ([]invariant, *invariant, error) {
+func checkInvariants(graph Graph, invs []invariant) error {
 	for _, asrt := range invs {
 		if val := formImpls[asrt.form](graph, asrt); !val {
-			return invs, &asrt, fmt.Errorf("invariant failed")
+			return invariantError{asrt}
 		}
 	}
 
-	return invs, nil, nil
+	return nil
 }
 
 func reachImpl(graph Graph, inv invariant) bool {

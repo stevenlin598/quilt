@@ -97,8 +97,8 @@ func toStitch(parsed []ast) (Stitch, error) {
 		return Stitch{}, err
 	}
 
-	if _, failer, err := checkInvariants(graph, *ctx.invariants); err != nil {
-		return Stitch{}, fmt.Errorf("invariant failed: %s", failer.str)
+	if err := checkInvariants(graph, *ctx.invariants); err != nil {
+		return Stitch{}, err
 	}
 
 	return spec, nil

@@ -20,12 +20,20 @@ type query struct {
 	str    string // Original query text.
 }
 
+type queryError struct {
+	failer query
+	reason error
+}
+
+func (err queryError) Error() string {
+	return fmt.Sprintf("mutation %s failed: %s",
+		err.failer.str, err.reason.Error())
+}
+
+type queryFunc func(graph Graph, invs []invariant, query query) error
+
 var queryFormKeywords map[string]queryType
-var queryFormImpls map[queryType]func(
-	graph Graph,
-	invs []invariant,
-	query query,
-) *invariant
+var queryFormImpls map[queryType]queryFunc
 
 func init() {
 	queryFormKeywords = map[string]queryType{
@@ -33,38 +41,38 @@ func init() {
 		"removeSet": removeOneQuery,
 	}
 
-	queryFormImpls = map[queryType]func(
-		graph Graph,
-		invs []invariant,
-		query query,
-	) *invariant{
+	queryFormImpls = map[queryType]queryFunc{
 		removeOneQuery: whatIfRemoveOne,
 		removeSetQuery: whatIfRemoveSet,
 	}
 }
 
-func ask(graph Graph, invs []invariant, path string) (*query, *invariant, error) {
+func ask(graph Graph, invs []invariant, path string) (query, invariant, error) {
 	queries, err := parseQueries(graph, path)
 	if err != nil {
-		return nil, nil, err
+		return query{}, invariant{}, err
 	}
 
 	return askQueries(graph, invs, queries)
 }
 
-func askQueries(graph Graph, invs []invariant, queries []query) (*query, *invariant,
-	error) {
+func askQueries(graph Graph, invs []invariant, queries []query) (query,
+	invariant, error) {
+
 	for _, query := range queries {
-		if val := queryFormImpls[query.form](graph, invs, query); val != nil {
-			return &query,
-				val,
-				fmt.Errorf(
-					"mutation %s failed invariant %s",
-					query.str, val.str)
+		if err := queryFormImpls[query.form](graph, invs, query); err != nil {
+			var inv invariant
+			if invErr, ok := err.(invariantError); ok {
+				inv = invErr.failer
+			}
+			return query, inv, queryError{
+				failer: query,
+				reason: err,
+			}
 		}
 	}
 
-	return nil, nil, nil
+	return query{}, invariant{}, nil
 }
 
 func parseQueryLine(graph Graph, line string) (query, error) {
@@ -98,29 +106,22 @@ func parseQueries(graph Graph, path string) ([]query, error) {
 	return queries, nil
 }
 
-func whatIfRemoveOne(graph Graph, invs []invariant, query query) *invariant {
+func whatIfRemoveOne(graph Graph, invs []invariant, query query) error {
 	graphCopy := graph.copyGraph()
 	graphCopy.removeNode(query.target)
 
-	if _, failer, err := checkInvariants(graphCopy, invs); err != nil {
-		return failer
-	}
-	return nil
+	return checkInvariants(graphCopy, invs)
 }
 
-func whatIfRemoveSet(graph Graph, invs []invariant, query query) *invariant {
+func whatIfRemoveSet(graph Graph, invs []invariant, query query) error {
 	graphCopy := graph.copyGraph()
 	node := query.target
 	avSet := graphCopy.findAvailabilitySet(node)
 	if avSet == nil {
-		return &invariant{str: fmt.Sprintf(
-			"could not find availability set: %s", node)}
+		return fmt.Errorf("could not find availability set: %s", node)
 	}
 
 	graphCopy.removeAvailabiltySet(avSet)
 
-	if _, failer, err := checkInvariants(graphCopy, invs); err != nil {
-		return failer
-	}
-	return nil
+	return checkInvariants(graphCopy, invs)
 }

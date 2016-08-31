@@ -793,13 +793,7 @@ func invariantImpl(ctx *evalCtx, args []ast) (ast, error) {
 	var inv invariant
 
 	// Invariant format: <form> <target value ("true"/"false")> <node labels...>
-	keyword, ok := formKeywords[string(args[0].String())]
-	if !ok {
-		return invariant{}, fmt.Errorf(
-			"malformed invariant (unknown invariant type): %s",
-			invStr,
-		)
-	}
+	keyword := invariantType(args[0].String())
 
 	switch len(args) {
 	case 1:
@@ -807,7 +801,6 @@ func invariantImpl(ctx *evalCtx, args []ast) (ast, error) {
 			form:   keyword,
 			target: true,
 			nodes:  []string{},
-			str:    invStr,
 		}
 
 	default:
@@ -856,7 +849,6 @@ func invariantImpl(ctx *evalCtx, args []ast) (ast, error) {
 			form:   keyword,
 			target: target,
 			nodes:  nodes,
-			str:    invStr,
 		}
 	}
 	*globalCtx.invariants = append(*globalCtx.invariants, inv)
