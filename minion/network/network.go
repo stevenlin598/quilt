@@ -162,82 +162,8 @@ func updateACLs(connections []db.Connection, labels []db.Label,
 	}
 
 	// Generate the ACLs that should be in the database.
-	labelIPMap := map[string]string{}
-	for _, l := range labels {
-		labelIPMap[l.Label] = l.IP
-	}
-
-	labelDbcMap := map[string][]db.Container{}
-	for _, dbc := range containers {
-		for _, l := range dbc.Labels {
-			labelDbcMap[l] = append(labelDbcMap[l], dbc)
-		}
-	}
-
-	matchSet := map[string]struct{}{}
-	for _, conn := range connections {
-		for _, fromDbc := range labelDbcMap[conn.From] {
-			fromIP := fromDbc.IP
-			toIP := labelIPMap[conn.To]
-			if fromIP == "" || toIP == "" {
-				continue
-			}
-
-			min := conn.MinPort
-			max := conn.MaxPort
-
-			match := fmt.Sprintf("ip4.src==%s && ip4.dst==%s && "+
-				"(%d <= udp.dst <= %d || %[3]d <= tcp.dst <= %[4]d)",
-				fromIP, toIP, min, max)
-			reverse := fmt.Sprintf("ip4.src==%s && ip4.dst==%s && "+
-				"(%d <= udp.src <= %d || %[3]d <= tcp.src <= %[4]d)",
-				toIP, fromIP, min, max)
-
-			matchSet[match] = struct{}{}
-			matchSet[reverse] = struct{}{}
-
-			icmp := fmt.Sprintf("ip4.src==%s && ip4.dst==%s && icmp",
-				fromIP, toIP)
-			revIcmp := fmt.Sprintf("ip4.src==%s && ip4.dst==%s && icmp",
-				toIP, fromIP)
-
-			matchSet[icmp] = struct{}{}
-			matchSet[revIcmp] = struct{}{}
-		}
-	}
-
-	coreACLs := make(map[ovsdb.AclCore]struct{})
-
-	// Drop all ip traffic by default.
-	new := ovsdb.AclCore{
-		Priority:  0,
-		Match:     "ip",
-		Action:    "drop",
-		Direction: "to-lport"}
-	coreACLs[new] = struct{}{}
-
-	new = ovsdb.AclCore{
-		Priority:  0,
-		Match:     "ip",
-		Action:    "drop",
-		Direction: "from-lport"}
-	coreACLs[new] = struct{}{}
-
-	for match := range matchSet {
-		new = ovsdb.AclCore{
-			Priority:  1,
-			Direction: "to-lport",
-			Action:    "allow",
-			Match:     match}
-		coreACLs[new] = struct{}{}
-
-		new = ovsdb.AclCore{
-			Priority:  1,
-			Direction: "from-lport",
-			Action:    "allow",
-			Match:     match}
-		coreACLs[new] = struct{}{}
-	}
+	conns := getACLConnections(connections, labels, containers)
+	coreACLs := generateACLs(conns)
 
 	for _, acl := range ovsdbACLs {
 		core := acl.Core
@@ -257,6 +183,108 @@ func updateACLs(connections []db.Connection, labels []db.Label,
 			log.WithError(err).Warn("Error adding ACL")
 		}
 	}
+}
+
+type aclConnection struct {
+	fromIPs []string
+	toIPs   []string
+	minPort int
+	maxPort int
+}
+
+func getACLConnections(connections []db.Connection, labels []db.Label,
+	containers []db.Container) []aclConnection {
+
+	labelMap := map[string]db.Label{}
+	for _, l := range labels {
+		labelMap[l.Label] = l
+	}
+
+	labelDbcMap := map[string][]db.Container{}
+	for _, dbc := range containers {
+		for _, l := range dbc.Labels {
+			labelDbcMap[l] = append(labelDbcMap[l], dbc)
+		}
+	}
+
+	var res []aclConnection
+	for _, conn := range connections {
+		var fromIPs []string
+		for _, fromDbc := range labelDbcMap[conn.From] {
+			fromIP := fromDbc.IP
+			if fromIP == "" {
+				continue
+			}
+			fromIPs = append(fromIPs, fromIP)
+		}
+
+		toIP := labelMap[conn.To].IP
+		if toIP == "" || len(fromIPs) == 0 {
+			continue
+		}
+
+		res = append(res, aclConnection{
+			fromIPs: fromIPs,
+			toIPs:   []string{toIP},
+			minPort: conn.MinPort,
+			maxPort: conn.MaxPort,
+		})
+	}
+
+	return res
+}
+
+func (c aclConnection) acls() (acls []string) {
+	matchFmt := fmt.Sprintf("ip4.src==%%[1]s && ip4.dst==%%[3]s && "+
+		"(%[1]d <= udp.%%[2]s <= %[2]d || %[1]d <= tcp.%%[2]s <= %[2]d)",
+		c.minPort, c.maxPort)
+	icmpFmt := "ip4.src==%s && ip4.dst==%s && icmp"
+	for _, fromIP := range c.fromIPs {
+		for _, toIP := range c.toIPs {
+			acls = append(acls,
+				fmt.Sprintf(matchFmt, fromIP, "dst", toIP),
+				fmt.Sprintf(matchFmt, toIP, "src", fromIP),
+				fmt.Sprintf(icmpFmt, fromIP, toIP),
+				fmt.Sprintf(icmpFmt, toIP, fromIP))
+		}
+	}
+	return acls
+}
+
+func generateACLs(connections []aclConnection) map[ovsdb.AclCore]struct{} {
+	coreACLs := map[ovsdb.AclCore]struct{}{
+		// Drop all ip traffic by default.
+		ovsdb.AclCore{
+			Priority:  0,
+			Match:     "ip",
+			Action:    "drop",
+			Direction: "to-lport",
+		}: {},
+		ovsdb.AclCore{
+			Priority:  0,
+			Match:     "ip",
+			Action:    "drop",
+			Direction: "from-lport",
+		}: {},
+	}
+	for _, c := range connections {
+		for _, match := range c.acls() {
+			coreACLs[ovsdb.AclCore{
+				Priority:  1,
+				Direction: "to-lport",
+				Action:    "allow",
+				Match:     match,
+			}] = struct{}{}
+			coreACLs[ovsdb.AclCore{
+				Priority:  1,
+				Direction: "from-lport",
+				Action:    "allow",
+				Match:     match,
+			}] = struct{}{}
+		}
+	}
+
+	return coreACLs
 }
 
 // Len returns the length of the slice

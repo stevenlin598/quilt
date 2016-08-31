@@ -2,12 +2,12 @@ package network
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"testing"
 
 	"github.com/NetSys/quilt/db"
-	"github.com/NetSys/quilt/join"
 	"github.com/NetSys/quilt/minion/ovsdb"
 )
 
@@ -100,555 +100,277 @@ func TestRunMaster(t *testing.T) {
 	}
 }
 
-func TestACL(t *testing.T) {
+func checkACLCount(t *testing.T, client ovsdb.Client,
+	connections []db.Connection, expCount int) {
+
+	updateACLs(connections, allLabels, allContainers)
+	if acls, _ := client.ListACLs(lSwitch); len(acls) != expCount {
+		t.Errorf("Wrong number of ACLs: expected %d, got %d.",
+			expCount, len(acls))
+	}
+}
+
+func TestACLUpdate(t *testing.T) {
 	client := ovsdb.NewFakeOvsdbClient()
 	client.CreateLogicalSwitch(lSwitch)
 	ovsdb.Open = func() (ovsdb.Client, error) {
 		return client, nil
 	}
+	redBlueConnection := db.Connection{
+		From:    "red",
+		To:      "blue",
+		MinPort: 80,
+		MaxPort: 80,
+	}
+	redYellowConnection := db.Connection{
+		From:    "redBlue",
+		To:      "redBlue",
+		MinPort: 80,
+		MaxPort: 81,
+	}
+	checkACLCount(t, client, []db.Connection{redBlueConnection}, 10)
+	checkACLCount(t, client,
+		[]db.Connection{redBlueConnection, redYellowConnection}, 26)
+	checkACLCount(t, client, []db.Connection{redYellowConnection}, 18)
+	checkACLCount(t, client, nil, 2)
+}
 
-	defaultAclCores := []ovsdb.AclCore{
+func allowMatch(acls map[ovsdb.AclCore]struct{}, match string) {
+	acls[ovsdb.AclCore{
+		Priority:  1,
+		Direction: "from-lport",
+		Action:    "allow",
+		Match:     match,
+	}] = struct{}{}
+	acls[ovsdb.AclCore{
+		Priority:  1,
+		Direction: "to-lport",
+		Action:    "allow",
+		Match:     match,
+	}] = struct{}{}
+}
+
+func TestACLGeneration(t *testing.T) {
+	exp := map[ovsdb.AclCore]struct{}{
 		{
 			Priority:  0,
-			Match:     "ip",
-			Action:    "drop",
-			Direction: "to-lport",
-		},
-		{
-			Priority:  0,
-			Match:     "ip",
-			Action:    "drop",
 			Direction: "from-lport",
+			Match:     "ip",
+			Action:    "drop",
+		}: {},
+		{
+			Priority:  0,
+			Direction: "to-lport",
+			Match:     "ip",
+			Action:    "drop",
+		}: {},
+	}
+	allowMatch(exp, "ip4.src==8.8.8.8 && ip4.dst==9.9.9.9 "+
+		"&& (80 <= udp.dst <= 80 || 80 <= tcp.dst <= 80)")
+	allowMatch(exp, "ip4.src==8.8.8.8 && ip4.dst==9.9.9.9 && icmp")
+	allowMatch(exp, "ip4.src==9.9.9.9 && ip4.dst==8.8.8.8 "+
+		"&& (80 <= udp.src <= 80 || 80 <= tcp.src <= 80)")
+	allowMatch(exp, "ip4.src==9.9.9.9 && ip4.dst==8.8.8.8 && icmp")
+	allowMatch(exp, "ip4.src==10.10.10.10 && ip4.dst==12.12.12.12 "+
+		"&& (80 <= udp.dst <= 81 || 80 <= tcp.dst <= 81)")
+	allowMatch(exp, "ip4.src==10.10.10.10 && ip4.dst==12.12.12.12 && icmp")
+	allowMatch(exp, "ip4.src==10.10.10.10 && ip4.dst==13.13.13.13 "+
+		"&& (80 <= udp.dst <= 81 || 80 <= tcp.dst <= 81)")
+	allowMatch(exp, "ip4.src==10.10.10.10 && ip4.dst==13.13.13.13 && icmp")
+	allowMatch(exp, "ip4.src==11.11.11.11 && ip4.dst==12.12.12.12 "+
+		"&& (80 <= udp.dst <= 81 || 80 <= tcp.dst <= 81)")
+	allowMatch(exp, "ip4.src==11.11.11.11 && ip4.dst==12.12.12.12 && icmp")
+	allowMatch(exp, "ip4.src==11.11.11.11 && ip4.dst==13.13.13.13 "+
+		"&& (80 <= udp.dst <= 81 || 80 <= tcp.dst <= 81)")
+	allowMatch(exp, "ip4.src==11.11.11.11 && ip4.dst==13.13.13.13 && icmp")
+	allowMatch(exp, "ip4.src==12.12.12.12 && ip4.dst==10.10.10.10 "+
+		"&& (80 <= udp.src <= 81 || 80 <= tcp.src <= 81)")
+	allowMatch(exp, "ip4.src==12.12.12.12 && ip4.dst==10.10.10.10 && icmp")
+	allowMatch(exp, "ip4.src==12.12.12.12 && ip4.dst==11.11.11.11 "+
+		"&& (80 <= udp.src <= 81 || 80 <= tcp.src <= 81)")
+	allowMatch(exp, "ip4.src==12.12.12.12 && ip4.dst==11.11.11.11 && icmp")
+	allowMatch(exp, "ip4.src==13.13.13.13 && ip4.dst==10.10.10.10 "+
+		"&& (80 <= udp.src <= 81 || 80 <= tcp.src <= 81)")
+	allowMatch(exp, "ip4.src==13.13.13.13 && ip4.dst==10.10.10.10 && icmp")
+	allowMatch(exp, "ip4.src==13.13.13.13 && ip4.dst==11.11.11.11 "+
+		"&& (80 <= udp.src <= 81 || 80 <= tcp.src <= 81)")
+	allowMatch(exp, "ip4.src==13.13.13.13 && ip4.dst==11.11.11.11 && icmp")
+
+	actual := generateACLs(
+		[]aclConnection{
+			{
+				fromIPs: []string{"8.8.8.8"},
+				toIPs:   []string{"9.9.9.9"},
+				minPort: 80,
+				maxPort: 80,
+			},
+			{
+				fromIPs: []string{"10.10.10.10", "11.11.11.11"},
+				toIPs:   []string{"12.12.12.12", "13.13.13.13"},
+				minPort: 80,
+				maxPort: 81,
+			},
 		},
+	)
+	if !reflect.DeepEqual(actual, exp) {
+		t.Errorf("Bad ACL generation: expected %v, got %v",
+			exp, actual)
 	}
+}
 
-	// `expACLs` should NOT contain the default rules.
-	checkAcl := func(connections []db.Connection, labels []db.Label,
-		containers []db.Container, expectedAclCores []ovsdb.AclCore,
-		resetClient bool) {
-		if resetClient {
-			client = ovsdb.NewFakeOvsdbClient()
-			client.CreateLogicalSwitch(lSwitch)
-		}
-		updateACLs(connections, labels, containers)
+func checkConnectionConstruction(t *testing.T, connections []db.Connection,
+	labels []db.Label, containers []db.Container, expected []aclConnection) {
 
-		res, err := client.ListACLs(lSwitch)
-		if err != nil {
-			t.Error(err)
-		}
-		updateACLs(connections, labels, containers)
-
-		res, err = client.ListACLs(lSwitch)
-		if err != nil {
-			t.Error(err)
-		}
-
-		expectedAclCores = append(defaultAclCores, expectedAclCores...)
-
-		key := func(val interface{}) interface{} {
-			switch v := val.(type) {
-			case ovsdb.AclCore:
-				return v
-			case ovsdb.Acl:
-				return v.Core
-			}
-			return nil
-		}
-
-		pair, _, _ := join.HashJoin(AclCoreSlice(expectedAclCores),
-			AclSlice(res), key, key)
-		if len(pair) != len(expectedAclCores) {
-			t.Error("Local ACLs do not match ovsdbACLs.")
-		}
+	actual := getACLConnections(connections, labels, containers)
+	if !reflect.DeepEqual(actual, expected) {
+		t.Errorf("Bad connection deconstruction: expected %v, got %v",
+			expected, actual)
 	}
+}
 
-	redLabelIP := "8.8.8.8"
-	blueLabelIP := "9.9.9.9"
-	yellowLabelIP := "10.10.10.10"
-	purpleLabelIP := "12.12.12.12"
-	redBlueLabelIP := "13.13.13.13"
-	redLabel := db.Label{Label: "red",
-		IP: redLabelIP}
-	blueLabel := db.Label{Label: "blue",
-		IP: blueLabelIP}
-	yellowLabel := db.Label{Label: "yellow",
-		IP: yellowLabelIP}
-	purpleLabel := db.Label{Label: "purple",
-		IP: purpleLabelIP}
-	redBlueLabel := db.Label{Label: "redBlue",
-		IP: redBlueLabelIP}
-	allLabels := []db.Label{redLabel, blueLabel, yellowLabel, purpleLabel,
-		redBlueLabel}
+var redLabelIP = "8.8.8.8"
+var blueLabelIP = "9.9.9.9"
+var yellowLabelIP = "10.10.10.10"
+var redBlueLabelIP = "13.13.13.13"
+var redContainerIP = "100.1.1.1"
+var blueContainerIP = "100.1.1.2"
+var yellowContainerIP = "100.1.1.3"
 
-	redContainerIP := "100.1.1.1"
-	blueContainerIP := "100.1.1.2"
-	yellowContainerIP := "100.1.1.3"
-	purpleContainerIP := "100.1.1.4"
-	redContainer := db.Container{IP: redContainerIP,
-		Labels: []string{"red", "redBlue"},
-	}
-	blueContainer := db.Container{IP: blueContainerIP,
-		Labels: []string{"blue", "redBlue"},
-	}
-	yellowContainer := db.Container{IP: yellowContainerIP,
-		Labels: []string{"yellow"},
-	}
-	purpleContainer := db.Container{IP: purpleContainerIP,
-		Labels: []string{"purple"},
-	}
-	allContainers := []db.Container{redContainer, blueContainer, yellowContainer,
-		purpleContainer}
+var redLabel = db.Label{
+	Label: "red",
+	IP:    redLabelIP,
+}
+var blueLabel = db.Label{
+	Label: "blue",
+	IP:    blueLabelIP,
+}
+var yellowLabel = db.Label{
+	Label: "yellow",
+	IP:    yellowLabelIP,
+}
+var redBlueLabel = db.Label{
+	Label: "redBlue",
+	IP:    redBlueLabelIP,
+}
+var allLabels = []db.Label{redLabel, blueLabel, yellowLabel, redBlueLabel}
 
-	matchFmt := "ip4.src==%s && ip4.dst==%s && " +
-		"(%d <= udp.dst <= %d || %[3]d <= tcp.dst <= %[4]d)"
-	reverseFmt := "ip4.src==%s && ip4.dst==%s && " +
-		"(%d <= udp.src <= %d || %[3]d <= tcp.src <= %[4]d)"
-	icmpFmt := "ip4.src==%s && ip4.dst==%s && icmp"
+var redContainer = db.Container{
+	IP:     redContainerIP,
+	Labels: []string{"red", "redBlue"},
+}
+var blueContainer = db.Container{
+	IP:     blueContainerIP,
+	Labels: []string{"blue", "redBlue"},
+}
+var yellowContainer = db.Container{
+	IP:     yellowContainerIP,
+	Labels: []string{"yellow"},
+}
+var allContainers = []db.Container{redContainer, blueContainer, yellowContainer}
+
+func TestConnectionBreakdown(t *testing.T) {
 
 	// No connections should result in no ACLs but the default drop rules.
-	checkAcl([]db.Connection{}, []db.Label{}, []db.Container{}, []ovsdb.AclCore{},
-		true)
+	checkConnectionConstruction(t,
+		[]db.Connection{}, []db.Label{}, []db.Container{}, nil)
 
 	// Test one connection (with range)
-	checkAcl([]db.Connection{
-		{From: "red",
-			To:      "blue",
-			MinPort: 80,
-			MaxPort: 81}},
+	checkConnectionConstruction(t,
+		[]db.Connection{
+			{
+				From:    "red",
+				To:      "blue",
+				MinPort: 80,
+				MaxPort: 81,
+			},
+		},
 		allLabels,
 		allContainers,
-		[]ovsdb.AclCore{
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 81),
-				Action:   "allow",
-				Priority: 1,
+		[]aclConnection{
+			{
+				fromIPs: []string{redContainerIP},
+				toIPs:   []string{blueLabelIP},
+				minPort: 80,
+				maxPort: 81,
 			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 81),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 81),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 81),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			}},
-		true)
+		},
+	)
 
 	// Test connecting from label with multiple containers
-	checkAcl([]db.Connection{
-		{From: "redBlue",
-			To:      "yellow",
-			MinPort: 80,
-			MaxPort: 80}},
+	checkConnectionConstruction(t,
+		[]db.Connection{
+			{
+				From:    "redBlue",
+				To:      "yellow",
+				MinPort: 80,
+				MaxPort: 80,
+			},
+		},
 		allLabels,
 		allContainers,
-		[]ovsdb.AclCore{
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					yellowLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
+		[]aclConnection{
+			{
+				fromIPs: []string{redContainerIP, blueContainerIP},
+				toIPs:   []string{yellowLabelIP},
+				minPort: 80,
+				maxPort: 80,
 			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					yellowLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, yellowLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, yellowLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, blueContainerIP,
-					yellowLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, blueContainerIP,
-					yellowLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, yellowLabelIP,
-					blueContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, yellowLabelIP,
-					blueContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					yellowLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					yellowLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, blueContainerIP,
-					yellowLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, blueContainerIP,
-					yellowLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowLabelIP,
-					blueContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowLabelIP,
-					blueContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			}},
-		true)
+		},
+	)
 
-	// Test removing a connection
-	checkAcl([]db.Connection{
-		{From: "red",
-			To:      "blue",
-			MinPort: 80,
-			MaxPort: 80}},
+	// Test multiple connections
+	checkConnectionConstruction(t,
+		[]db.Connection{
+			{
+				From:    "redBlue",
+				To:      "yellow",
+				MinPort: 80,
+				MaxPort: 80,
+			},
+			{
+				From:    "red",
+				To:      "blue",
+				MinPort: 80,
+				MaxPort: 81,
+			},
+		},
 		allLabels,
 		allContainers,
-		[]ovsdb.AclCore{
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
+		[]aclConnection{
+			{
+				fromIPs: []string{redContainerIP, blueContainerIP},
+				toIPs:   []string{yellowLabelIP},
+				minPort: 80,
+				maxPort: 80,
 			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
+			{
+				fromIPs: []string{redContainerIP},
+				toIPs:   []string{blueLabelIP},
+				minPort: 80,
+				maxPort: 81,
 			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
+		},
+	)
+
+	// Test toLabel with multiple containers
+	checkConnectionConstruction(t,
+		[]db.Connection{
+			{
+				From:    "yellow",
+				To:      "redBlue",
+				MinPort: 80,
+				MaxPort: 80,
 			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			}},
-		true)
-	checkAcl([]db.Connection{},
+		},
 		allLabels,
 		allContainers,
-		[]ovsdb.AclCore{},
-		false)
-
-	// Test removing one connection, but not another
-	checkAcl([]db.Connection{
-		{From: "red",
-			To:      "blue",
-			MinPort: 80,
-			MaxPort: 80},
-		{From: "yellow",
-			To:      "purple",
-			MinPort: 80,
-			MaxPort: 80}},
-		allLabels,
-		allContainers,
-		[]ovsdb.AclCore{
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
+		[]aclConnection{
+			{
+				fromIPs: []string{yellowContainerIP},
+				toIPs:   []string{redBlueLabelIP},
+				minPort: 80,
+				maxPort: 80,
 			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, redContainerIP,
-					blueLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, blueLabelIP,
-					redContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, yellowContainerIP,
-					purpleLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, yellowContainerIP,
-					purpleLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, purpleLabelIP,
-					yellowContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, purpleLabelIP,
-					yellowContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, redContainerIP,
-					blueLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, blueLabelIP,
-					redContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowContainerIP,
-					purpleLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowContainerIP,
-					purpleLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, purpleLabelIP,
-					yellowContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, purpleLabelIP,
-					yellowContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			}},
-		true)
-	checkAcl([]db.Connection{
-		{From: "yellow",
-			To:      "purple",
-			MinPort: 80,
-			MaxPort: 80}},
-		allLabels,
-		allContainers,
-		[]ovsdb.AclCore{
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(matchFmt, yellowContainerIP,
-					purpleLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(matchFmt, yellowContainerIP,
-					purpleLabelIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(reverseFmt, purpleLabelIP,
-					yellowContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(reverseFmt, purpleLabelIP,
-					yellowContainerIP, 80, 80),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowContainerIP,
-					purpleLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, yellowContainerIP,
-					purpleLabelIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "to-lport",
-				Match: fmt.Sprintf(icmpFmt, purpleLabelIP,
-					yellowContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			},
-			{Direction: "from-lport",
-				Match: fmt.Sprintf(icmpFmt, purpleLabelIP,
-					yellowContainerIP),
-				Action:   "allow",
-				Priority: 1,
-			}},
-		true)
-}
-
-type ACLList []ovsdb.Acl
-
-func (lst ACLList) Len() int {
-	return len(lst)
-}
-
-func (lst ACLList) Swap(i, j int) {
-	lst[i], lst[j] = lst[j], lst[i]
-}
-
-func (lst ACLList) Less(i, j int) bool {
-	l, r := lst[i], lst[j]
-
-	switch {
-	case l.Core.Match != r.Core.Match:
-		return l.Core.Match < r.Core.Match
-	case l.Core.Direction != r.Core.Direction:
-		return l.Core.Direction < r.Core.Direction
-	case l.Core.Action != r.Core.Action:
-		return l.Core.Action < r.Core.Action
-	default:
-		return l.Core.Priority < r.Core.Priority
-	}
-}
-
-type AclSlice []ovsdb.Acl
-
-func (acls AclSlice) Get(i int) interface{} {
-	return acls[i]
-}
-
-func (acls AclSlice) Len() int {
-	return len(acls)
-}
-
-type AclCoreSlice []ovsdb.AclCore
-
-func (cores AclCoreSlice) Get(i int) interface{} {
-	return cores[i]
-}
-
-func (cores AclCoreSlice) Len() int {
-	return len(cores)
+		},
+	)
 }
