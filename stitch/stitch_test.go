@@ -1612,7 +1612,7 @@ func codeEq(a, b string) bool {
 
 // Tests for get.go.
 func TestGetQuiltPath(t *testing.T) {
-	os.Setenv("QUILT_PATH", "")
+	os.Setenv(QuiltPathKey, "")
 	actual := GetQuiltPath()
 	usr, err := user.Current()
 	if err != nil {
