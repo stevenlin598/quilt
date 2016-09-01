@@ -74,7 +74,7 @@ func checkConfig(content string) error {
 	reader := strings.NewReader(content)
 
 	var sc scanner.Scanner
-	_, err := stitch.Compile(*sc.Init(reader), "", false)
+	_, err := stitch.Compile(*sc.Init(reader), stitch.DefaultImportGetter)
 	if err != nil {
 		return err
 	}

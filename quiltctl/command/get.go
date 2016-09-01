@@ -53,7 +53,7 @@ func (gCmd *Get) Parse(args []string) error {
 
 // Run downloads the requested import.
 func (gCmd *Get) Run() int {
-	if err := stitch.GetSpec(gCmd.importPath); err != nil {
+	if err := stitch.DefaultImportGetter.Download(gCmd.importPath); err != nil {
 		log.WithError(err).Errorf("Error getting import `%s`.", gCmd.importPath)
 		return 1
 	}

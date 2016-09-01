@@ -1497,7 +1497,9 @@ func parseTestImport(t *testing.T, code, evalExpected string, path string) evalC
 		return evalCtx{}
 	}
 
-	parsed, err = resolveImports(parsed, path, false)
+	parsed, err = ImportGetter{
+		Path: path,
+	}.resolveImports(parsed)
 	if err != nil {
 		t.Errorf("%s: %s", code, err)
 		return evalCtx{}
@@ -1568,7 +1570,9 @@ func runtimeErrImport(t *testing.T, code, expectedErr string, path string) {
 		return
 	}
 
-	prog, err = resolveImports(prog, path, false)
+	prog, err = ImportGetter{
+		Path: path,
+	}.resolveImports(prog)
 	if err != nil {
 		t.Errorf("%s: %s", code, err)
 		return
@@ -1589,7 +1593,9 @@ func importErr(t *testing.T, code, expectedErr string, path string) {
 		return
 	}
 
-	_, err = resolveImports(prog, path, false)
+	_, err = ImportGetter{
+		Path: path,
+	}.resolveImports(prog)
 	if fmt.Sprintf("%s", err) != expectedErr {
 		t.Errorf("%s\n\t%s: %s", code, err, expectedErr)
 		return
@@ -1620,7 +1626,7 @@ func TestGetQuiltPath(t *testing.T) {
 
 // Modify the download and create functions so that calls are not made to the network.
 // They will update a list of directories accessed, to verify behavior of checkSpec and
-// getSpec.
+// downloadSpec.
 var updated []string
 var created []string
 
@@ -1641,14 +1647,16 @@ func initVCSFunc() {
 
 func testCheckSpec(t *testing.T) {
 	initVCSFunc()
-	os.Setenv("QUILT_PATH", ".")
+	getter := ImportGetter{
+		Path: ".",
+	}
 	util.AppFs = afero.NewMemMapFs()
 	util.AppFs.Mkdir("test", 777)
 	util.WriteFile("test/noDownload.spec",
 		[]byte(`(import "nextimport/nextimport")`), 0644)
 	util.AppFs.Mkdir("nextimport", 777)
 	util.WriteFile("nextimport/nextimport.spec", []byte("(define dummy 1)"), 0644)
-	if err := checkSpec("test/noDownload.spec", nil, nil); err != nil {
+	if err := getter.checkSpec("test/noDownload.spec", nil, nil); err != nil {
 		t.Error(err)
 	}
 
@@ -1660,7 +1668,7 @@ func testCheckSpec(t *testing.T) {
 	util.WriteFile("test/toDownload.spec",
 		[]byte(`(import "github.com/NetSys/quilt/specs/example")`), 0644)
 	expected := "unable to open import github.com/NetSys/quilt/specs/example"
-	err := checkSpec("test/toDownload.spec", nil, nil)
+	err := getter.checkSpec("test/toDownload.spec", nil, nil)
 	if !strings.HasPrefix(err.Error(), expected) {
 		t.Errorf("'%s' does not begin with '%s'", err.Error(), expected)
 	}
@@ -1678,11 +1686,17 @@ func testCheckSpec(t *testing.T) {
 func TestResolveSpecImports(t *testing.T) {
 	testCheckSpec(t)
 	initVCSFunc()
+	getter := ImportGetter{
+		Path: ".",
+	}
 	// This will error because we do not actually download the file. Checking a spec
 	// is handled in testCheckSpec.
-	expected := "unable to open import github.com/NetSys/quilt/specs/example"
-	if err := resolveSpecImports("test"); !strings.HasPrefix(err.Error(), expected) {
-		t.Errorf("'%s' does not begin with '%s'", err.Error(), expected)
+	expected := "unable to open import " +
+		"github.com/NetSys/quilt/specs/example " +
+		"(path=github.com/NetSys/quilt/specs/example.spec)"
+	if err := getter.resolveSpecImports("test"); err.Error() != expected {
+		t.Errorf("Resolve error didn't match: expected %q, got %q.",
+			expected, err.Error())
 	}
 
 	if len(created) == 0 {
@@ -1701,11 +1715,13 @@ func TestGetSpec(t *testing.T) {
 	initVCSFunc()
 	util.AppFs = afero.NewMemMapFs()
 	util.AppFs.Mkdir("getspecs", 777)
-	os.Setenv("QUILT_PATH", "./getspecs")
+	getter := ImportGetter{
+		Path: "./getspecs",
+	}
 	importPath := "github.com/NetSys/quilt"
 
 	// Clone
-	if _, err := getSpec(importPath); err != nil {
+	if _, err := getter.downloadSpec(importPath); err != nil {
 		t.Error(err)
 	}
 
@@ -1721,7 +1737,7 @@ func TestGetSpec(t *testing.T) {
 	util.AppFs.Mkdir("getspecs/github.com/NetSys/quilt", 777)
 
 	// Update
-	if _, err := getSpec(importPath); err != nil {
+	if _, err := getter.downloadSpec(importPath); err != nil {
 		t.Error(err)
 	}
 
