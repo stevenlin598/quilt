@@ -519,6 +519,9 @@ func (clst *amazonCluster) SetACLs(acls []string) error {
 						clst.namespace),
 					SourceSecurityGroupName: aws.String(
 						clst.namespace)})
+			if err != nil {
+				return err
+			}
 		}
 
 		for perm, install := range permMap {

@@ -683,8 +683,6 @@ func (clst *azureCluster) syncSecurityGroup(securityGroup network.SecurityGroup,
 	cloudInRules := []network.SecurityRule{}
 	cloudOutRules := []network.SecurityRule{}
 
-	var cloudRules securityRuleSlice
-	cloudRules = []network.SecurityRule{}
 	securityGroupName := *securityGroup.Name
 	result, err := clst.azureClient.securityRuleList(resourceGroupName,
 		securityGroupName)
@@ -692,8 +690,7 @@ func (clst *azureCluster) syncSecurityGroup(securityGroup network.SecurityGroup,
 		return err
 	}
 
-	cloudRules = *result.Value
-	for _, rule := range cloudRules {
+	for _, rule := range *result.Value {
 		if rule.Properties.Direction == network.Inbound {
 			cloudInRules = append(cloudInRules, rule)
 		} else if rule.Properties.Direction == network.Outbound {

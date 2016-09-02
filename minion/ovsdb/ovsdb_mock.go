@@ -98,7 +98,6 @@ func (mutation fakeMutation) apply(row *fakeRow) int {
 				if e.([]interface{})[1] == uuid {
 					data = append(data[:i], data[i+1:]...)
 				}
-				i--
 			}
 			mutationCount++
 		default:
@@ -218,7 +217,7 @@ func (client fakeOvsdbClient) insertOp(database string, op ovs.Operation) (
 			case string:
 				row[newKey] = val
 			case ovs.UUID:
-				uuidToAdd := ""
+				var uuidToAdd string
 				uuidGeneric := v.GoSet[0].(ovs.UUID).GoUUID
 				if actualUUID, ok := uuidMap[uuidGeneric]; ok {
 					uuidToAdd = actualUUID
