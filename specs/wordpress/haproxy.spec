@@ -7,7 +7,7 @@ var haproxyDefaultArgs = ["haproxy", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
 function createHAProxyNodes(nodeCount, hosts) {
     return _(nodeCount).times(function(i) {
         var label = new Label(_.uniqueId("haproxy-" + i),
-                        [new Docker(haproxySource, {args: ["run"]})]);
+                        [new Docker(haproxySource, ["run"])]);
         label.containers[0].setEnv("HOST", label.hostname());
         return label;
     });

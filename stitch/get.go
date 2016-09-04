@@ -40,6 +40,8 @@ func GetQuiltPath() string {
 
 	usr, err := user.Current()
 	if err != nil {
+		// XXX: Figure out proper way to handle this error. Current isn't
+		// implemented on linux/amd64, so this always errors on the minion.
 		log.WithError(err).
 			Errorf("Unable to get current user to generate %s", QuiltPathKey)
 		return ""

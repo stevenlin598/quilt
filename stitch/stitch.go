@@ -1,10 +1,10 @@
+//go:generate ../scripts/generate-bindings bindings.js
+
 package stitch
 
 import (
-	"errors"
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/robertkrimen/otto"
 
 	// Automatically import the Javascript underscore utility-belt library into
@@ -18,7 +18,6 @@ import (
 type Stitch struct {
 	code string
 	ctx  *evalCtx
-	vm   *otto.Otto
 }
 
 // A Placement constraint guides where containers may be scheduled, either relative to
@@ -99,6 +98,10 @@ type evalCtx struct {
 	placements  map[Placement]struct{}
 	machines    []Machine
 	invariants  []invariant
+
+	adminACL  []string
+	maxPrice  float64
+	namespace string
 }
 
 func run(filename string, spec string, getter ImportGetter) (*otto.Otto, error) {
@@ -109,15 +112,19 @@ func run(filename string, spec string, getter ImportGetter) (*otto.Otto, error) 
 	if err := vm.Set("require", getter.requireImpl); err != nil {
 		return vm, err
 	}
-	if _, err := vm.Run(JavascriptLibrary()); err != nil {
-		return vm, err
-	}
 
-	script, err := vm.Compile(filename, spec)
+	script, err := vm.Compile("<javascript_bindings>", javascriptBindings)
 	if err != nil {
 		return vm, err
 	}
+	if _, err := vm.Run(script); err != nil {
+		return vm, err
+	}
 
+	script, err = vm.Compile(filename, spec)
+	if err != nil {
+		return vm, err
+	}
 	if _, err := vm.Run(script); err != nil {
 		return vm, err
 	}
@@ -169,7 +176,6 @@ func New(specStr string, getter ImportGetter) (Stitch, error) {
 
 	spec := Stitch{
 		code: specStr,
-		vm:   vm,
 		ctx:  &ctx,
 	}
 	graph, err := InitializeGraph(spec)
@@ -255,45 +261,19 @@ func (stitch Stitch) QueryPlacements() []Placement {
 	return placements
 }
 
-// QueryFloat returns a float value defined in the stitch.
-func (stitch Stitch) QueryFloat(key string) (float64, error) {
-	value, err := stitch.vm.Get(key)
-	if err != nil {
-		return 0, err
-	}
-
-	if !value.IsNumber() {
-		return 0, errors.New("not a number")
-	}
-
-	return value.ToFloat()
+// QueryMaxPrice returns the max allowable machine price declared in the stitch.
+func (stitch Stitch) QueryMaxPrice() float64 {
+	return stitch.ctx.maxPrice
 }
 
-// QueryString returns a string value defined in the stitch.
-func (stitch Stitch) QueryString(key string) string {
-	value, err := stitch.vm.Get(key)
-	if err != nil {
-		log.Warnf("Unable to find %s", key)
-		return ""
-	}
-	valueString, _ := value.ToString()
-	return valueString
+// QueryNamespace returns the namespace declared in the stitch.
+func (stitch Stitch) QueryNamespace() string {
+	return stitch.ctx.namespace
 }
 
-// QueryStrSlice returns a string slice value defined in the stitch.
-func (stitch Stitch) QueryStrSlice(key string) []string {
-	vmVal, err := stitch.vm.Get(key)
-	if err != nil {
-		log.Warnf("Unable to find %s", key)
-		return []string{}
-	}
-	slice, err := parseStringSlice(vmVal)
-	if err != nil {
-		log.Warnf("bad type")
-		return []string{}
-	}
-
-	return slice
+// QueryAdminACL returns the admin ACLs declared in the stitch.
+func (stitch Stitch) QueryAdminACL() []string {
+	return stitch.ctx.adminACL
 }
 
 // String returns the stitch in its code form.

@@ -299,14 +299,14 @@ func TestStopNamespace(t *testing.T) {
 
 	stopCmd := &Stop{namespace: "namespace"}
 	stopCmd.Run()
-	expStitch := `AdminACL = [];Namespace = "namespace";`
+	expStitch := `setNamespace("namespace");`
 	if c.runStitchArg != expStitch {
 		t.Error("stop command invoked Quilt with the wrong stitch")
 	}
 
 	stopCmd = &Stop{}
 	stopCmd.Run()
-	expStitch = "AdminACL = [];"
+	expStitch = ""
 	if c.runStitchArg != expStitch {
 		t.Error("stop command invoked Quilt with the wrong stitch")
 	}
@@ -320,7 +320,7 @@ func TestRunSpec(t *testing.T) {
 	util.AppFs = afero.NewMemMapFs()
 
 	stitchPath := "test.spec"
-	testSpec := `new Docker("nginx", {});`
+	testSpec := `new Docker("nginx");`
 	util.WriteFile(stitchPath, []byte(testSpec), 0644)
 
 	runCmd := &Run{stitch: stitchPath}

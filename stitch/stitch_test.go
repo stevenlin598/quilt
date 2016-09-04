@@ -41,6 +41,7 @@ func TestMachine(t *testing.T) {
 			{
 				Role:     "Master",
 				Provider: "Amazon",
+				SSHKeys:  []string{},
 			}})
 
 	checkMachines(t, `var baseMachine = new Machine({provider: "Amazon"});
@@ -51,23 +52,26 @@ func TestMachine(t *testing.T) {
 			{
 				Role:     "Master",
 				Provider: "Amazon",
+				SSHKeys:  []string{},
 			},
 			{
 				Role:     "Master",
 				Provider: "Amazon",
+				SSHKeys:  []string{},
 			}})
 }
 
 func TestDocker(t *testing.T) {
 	t.Parallel()
 
-	checkContainers(t, `new Docker("image",
-	{
-		args: ["arg1", "arg2"],
-		env: {"foo": "bar"}
-	})`,
-		[]Container{
-			{
+	// Unlabeled containers aren't created in the context.
+	checkContainers(t, `new Docker("image")`, map[int]Container{})
+
+	checkContainers(t, `new Label("foo",
+	[new Docker("image", ["arg1", "arg2"])
+	.withEnv({"foo": "bar"})])`,
+		map[int]Container{
+			1: {
 				ID:      1,
 				Image:   "image",
 				Command: []string{"arg1", "arg2"},
@@ -75,12 +79,10 @@ func TestDocker(t *testing.T) {
 			},
 		})
 
-	checkContainers(t, `new Docker("image",
-	{
-		args: ["arg1", "arg2"]
-	})`,
-		[]Container{
-			{
+	checkContainers(t, `new Label("foo",
+	[new Docker("image", ["arg1", "arg2"])])`,
+		map[int]Container{
+			1: {
 				ID:      1,
 				Image:   "image",
 				Command: []string{"arg1", "arg2"},
@@ -88,22 +90,44 @@ func TestDocker(t *testing.T) {
 			},
 		})
 
-	checkContainers(t, `new Docker("image", {})`,
-		[]Container{
-			{
-				ID:    1,
-				Image: "image",
-				Env:   map[string]string{},
+	checkContainers(t, `new Label("foo",
+	[new Docker("image")])`,
+		map[int]Container{
+			1: {
+				ID:      1,
+				Image:   "image",
+				Command: []string{},
+				Env:     map[string]string{},
 			},
 		})
 
-	checkContainers(t, `var c = new Docker("image", {});
-	c.setEnv("foo", "bar")`,
-		[]Container{
-			{
-				ID:    1,
-				Image: "image",
-				Env:   map[string]string{"foo": "bar"},
+	checkContainers(t, `var c = new Docker("image");
+	c.env["foo"] = "bar";
+	new Label("foo", [c])`,
+		map[int]Container{
+			1: {
+				ID:      1,
+				Image:   "image",
+				Command: []string{},
+				Env:     map[string]string{"foo": "bar"},
+			},
+		})
+
+	checkContainers(t, `new Label("foo",
+	new Docker("image").replicate(2));`,
+		map[int]Container{
+			// IDs start from 2 because the reference container has ID 1.
+			2: {
+				ID:      2,
+				Image:   "image",
+				Command: []string{},
+				Env:     map[string]string{},
+			},
+			3: {
+				ID:      3,
+				Image:   "image",
+				Command: []string{},
+				Env:     map[string]string{},
 			},
 		})
 }
@@ -152,7 +176,7 @@ func TestPlacement(t *testing.T) {
 func TestLabel(t *testing.T) {
 	t.Parallel()
 
-	checkLabels(t, `new Label("web_tier", [new Docker("nginx", {})])`,
+	checkLabels(t, `new Label("web_tier", [new Docker("nginx")])`,
 		map[string]Label{
 			"public": {
 				Name:        "public",
@@ -166,7 +190,7 @@ func TestLabel(t *testing.T) {
 		})
 
 	checkLabels(t, `new Label("web_tier",
-		[new Docker("nginx", {}), new Docker("nginx", {})])`,
+		[new Docker("nginx"), new Docker("nginx")])`,
 		map[string]Label{
 			"public": {
 				Name:        "public",
@@ -179,6 +203,24 @@ func TestLabel(t *testing.T) {
 			},
 		})
 
+	// Conflicting label names.
+	checkLabels(t, `new Label("foo", []);
+	new Label("foo", []);`,
+		map[string]Label{
+			"public": {
+				Name:        "public",
+				Annotations: []string{},
+			},
+			"foo": {
+				Name:        "foo",
+				Annotations: []string{},
+			},
+			"foo2": {
+				Name:        "foo2",
+				Annotations: []string{},
+			},
+		})
+
 	expHostname := "foo.q"
 	checkJavascript(t, `var foo = new Label("foo", []);
 	return foo.hostname();`, expHostname)
@@ -186,7 +228,7 @@ func TestLabel(t *testing.T) {
 	expChildren := []string{"1.foo.q", "2.foo.q"}
 	checkJavascript(t, `
 	var foo = new Label("foo",
-		[new Docker("bar", {}), new Docker("baz", {})]);
+		[new Docker("bar"), new Docker("baz")]);
 	return foo.children();`, expChildren)
 }
 
@@ -218,6 +260,16 @@ func TestConnect(t *testing.T) {
 		})
 
 	checkConnections(t, pre+`connect(new Port(80), foo, publicInternet)`,
+		[]Connection{
+			{
+				From:    "foo",
+				To:      "public",
+				MinPort: 80,
+				MaxPort: 80,
+			},
+		})
+
+	checkConnections(t, pre+`connect(80, foo, publicInternet)`,
 		[]Connection{
 			{
 				From:    "foo",
@@ -288,20 +340,51 @@ func TestRequire(t *testing.T) {
 	}
 }
 
+func TestGithubKeys(t *testing.T) {
+	GetGithubKeys = func(username string) ([]string, error) {
+		return []string{"keys"}, nil
+	}
+	checkJavascript(t, `return githubKeys("username");`, []string{"keys"})
+}
+
+func TestQuery(t *testing.T) {
+	t.Parallel()
+
+	namespaceChecker := queryChecker(func(handle Stitch) interface{} {
+		return handle.QueryNamespace()
+	})
+	maxPriceChecker := queryChecker(func(handle Stitch) interface{} {
+		return handle.QueryMaxPrice()
+	})
+	adminACLChecker := queryChecker(func(handle Stitch) interface{} {
+		return handle.QueryAdminACL()
+	})
+
+	namespaceChecker(t, `setNamespace("myNamespace");`, "myNamespace")
+	namespaceChecker(t, ``, "")
+	maxPriceChecker(t, `setMaxPrice(5);`, 5.0)
+	maxPriceChecker(t, ``, 0.0)
+	adminACLChecker(t, `setAdminACL(["local"])`, []string{"local"})
+	adminACLChecker(t, ``, []string{})
+}
+
 func checkJavascript(t *testing.T, code string, exp interface{}) {
 	resultKey := "result"
 
-	handle, err := New(fmt.Sprintf(`var %s = function() {
-		%s
-	}()`, resultKey, code), ImportGetter{
+	exec := fmt.Sprintf(
+		`var %s = function() {
+			%s
+		}()`, resultKey, code)
+	getter := ImportGetter{
 		Path: ".",
-	})
+	}
+	vm, err := run("<test_code>", exec, getter)
 	if err != nil {
 		t.Errorf(`Unexpected error: "%s".`, err.Error())
 		return
 	}
 
-	actualVal, err := handle.vm.Get(resultKey)
+	actualVal, err := vm.Get(resultKey)
 	if err != nil {
 		t.Errorf(`Unexpected error retrieving result from VM: "%s".`,
 			err.Error())
@@ -349,7 +432,12 @@ var checkMachines = queryChecker(func(s Stitch) interface{} {
 })
 
 var checkContainers = queryChecker(func(s Stitch) interface{} {
-	return s.QueryContainers()
+	// Convert the slice to a map because the ordering is non-deterministic.
+	containersMap := make(map[int]Container)
+	for _, c := range s.QueryContainers() {
+		containersMap[c.ID] = c
+	}
+	return containersMap
 })
 
 var checkPlacements = queryChecker(func(s Stitch) interface{} {

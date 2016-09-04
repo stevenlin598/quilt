@@ -3,7 +3,7 @@ var image = "quilt/etcd";
 module.exports = function(n) {
     var etcdLabels = _(n).times(function(i) {
         var label = new Label(_.uniqueId("etcd-" + i),
-                        [new Docker(image, {args: ["run"]})]);
+                        [new Docker(image, ["run"])]);
         label.containers[0].setEnv("HOST", label.hostname());
         return label;
     });

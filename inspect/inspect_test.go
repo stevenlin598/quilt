@@ -41,7 +41,7 @@ func TestViz(t *testing.T) {
 }`
 	stc := `
 	function newContainer() {
-		return new Docker("ubuntu", {});
+		return new Docker("ubuntu");
 	}
 	var a = new Label("a", [newContainer()]);
 	var b = new Label("b", [newContainer()]);

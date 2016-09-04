@@ -18,10 +18,10 @@ sprk.job("run-example SparkPi");
 
 // Using unique Namespaces will allow multiple Quilt instances to run on the
 // same cloud provider account without conflict.
-Namespace = "kklin";
+setNamespace("kklin");
 
 // Defines the set of addresses that are allowed to access Quilt VMs.
-AdminACL = ["local"]
+setAdminACL(["local"]);
 
 var baseMachine = new Machine({
     provider: "Amazon",

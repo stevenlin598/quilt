@@ -16,12 +16,12 @@ func TestEngine(t *testing.T) {
 	spew := spew.NewDefaultConfig()
 	spew.MaxDepth = 2
 
-	pre := `var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
+	pre := `setNamespace("namespace");
+	setAdminACL(["1.2.3.4/32"]);
+	var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
 	conn := db.New()
 
-	code := pre + `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
-	deployMasters(2, baseMachine)
+	code := pre + `deployMasters(2, baseMachine)
 	deployWorkers(3, baseMachine)`
 
 	UpdatePolicy(conn, prog(t, code))
@@ -54,9 +54,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Verify master increase. */
-	code = pre + `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
-	deployMasters(4, baseMachine);
+	code = pre + `deployMasters(4, baseMachine);
 	deployWorkers(5, baseMachine);`
 
 	UpdatePolicy(conn, prog(t, code))
@@ -108,9 +106,7 @@ func TestEngine(t *testing.T) {
 	})
 
 	/* Also verify that masters and workers decrease properly. */
-	code = pre + `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
-	deployMasters(1, baseMachine);
+	code = pre + `deployMasters(1, baseMachine);
 	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
@@ -137,7 +133,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Empty Namespace does nothing. */
-	code = pre + `AdminACL = ["1.2.3.4/32"];
+	code = pre + `setNamespace("");
 	deployMasters(1, baseMachine);
 	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
@@ -165,9 +161,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Verify things go to zero. */
-	code = pre + `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
-	deployMasters(0, baseMachine);
+	code = pre + `deployMasters(0, baseMachine);
 	deployWorkers(1, baseMachine);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
@@ -205,8 +199,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Test mixed providers. */
-	code = `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
+	code = `setNamespace("namespace");
 	deployMachines([
 		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
 		new Machine({provider: "Vagrant", size: "v.large", role: "Master"}),
@@ -235,8 +228,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	/* Test that machines with different providers don't match. */
-	code = `Namespace = "Namespace";
-	AdminACL = ["1.2.3.4/32"];
+	code = `setNamespace("namespace");
 	deployMachines([
 		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
 		new Machine({provider: "Azure", size: "a.large", role: "Master"}),
@@ -297,49 +289,44 @@ func TestContainer(t *testing.T) {
 		})
 	}
 
-	code := `Namespace = "Namespace";
-	deployMachines([
+	code := `deployMachines([
 		new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);
-	new Label("Red", [new Docker("alpine", {}), new Docker("alpine", {})]);
-	new Label("Blue", [new Docker("alpine", {}), new Docker("alpine", {})]);`
+	new Label("Red", [new Docker("alpine"), new Docker("alpine")]);
+	new Label("Blue", [new Docker("alpine"), new Docker("alpine")]);`
 	check(code, 2, 2, 0)
 
-	code = `Namespace = "Namespace";
-	deployMachines([
+	code = `deployMachines([
 		new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);
-	new Label("Red", [new Docker("alpine", {}),
-		new Docker("alpine", {}),
-		new Docker("alpine", {})]);`
+	new Label("Red", [new Docker("alpine"),
+		new Docker("alpine"),
+		new Docker("alpine")]);`
 	check(code, 3, 0, 0)
 
-	code = `Namespace = "Namespace";
-	deployMachines([
+	code = `deployMachines([
 		new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);
 	var alpineCreator = function() {
-		return new Docker("alpine", {});
+		return new Docker("alpine");
 	}
-	new Label("Red", [new Docker("alpine", {})]);
+	new Label("Red", [new Docker("alpine")]);
 	new Label("Blue", _(5).times(alpineCreator));
 	new Label("Yellow", _(10).times(alpineCreator));`
 	check(code, 1, 5, 10)
 
-	code = `Namespace = "Namespace";
-	deployMachines([
+	code = `deployMachines([
 		new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);
 	var alpineCreator = function() {
-		return new Docker("alpine", {});
+		return new Docker("alpine");
 	}
 	new Label("Red", _(30).times(alpineCreator));
 	new Label("Blue", _(4).times(alpineCreator));
 	new Label("Yellow", _(7).times(alpineCreator));`
 	check(code, 30, 4, 7)
 
-	code = `Namespace = "Namespace";
-	deployMachines([
+	code = `deployMachines([
 		new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);`
 	check(code, 0, 0, 0)
@@ -352,9 +339,7 @@ func TestSort(t *testing.T) {
 	pre := `var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
 	conn := db.New()
 
-	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
-	AdminACL = [];
-	deployMasters(3, baseMachine);
+	UpdatePolicy(conn, prog(t, pre+`deployMasters(3, baseMachine);
 	deployWorkers(1, baseMachine);`))
 	err := conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
@@ -378,9 +363,7 @@ func TestSort(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
-	AdminACL = [];
-	deployMasters(2, baseMachine);
+	UpdatePolicy(conn, prog(t, pre+`deployMasters(2, baseMachine);
 	deployWorkers(1, baseMachine);`))
 	err = conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
@@ -404,9 +387,7 @@ func TestSort(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	UpdatePolicy(conn, prog(t, pre+`Namespace = "Namespace";
-	AdminACL = [];
-	deployMasters(1, baseMachine);
+	UpdatePolicy(conn, prog(t, pre+`deployMasters(1, baseMachine);
 	deployWorkers(1, baseMachine);`))
 	err = conn.Transact(func(view db.Database) error {
 		machines := view.SelectFromMachine(func(m db.Machine) bool {
@@ -437,8 +418,7 @@ func TestACLs(t *testing.T) {
 
 	conn := db.New()
 
-	code := `AdminACL = ["1.2.3.4/32", "local"];
-	Namespace = "Namespace";
+	code := `setAdminACL(["1.2.3.4/32", "local"]);
 	deployMachines([
 	new Machine({provider: "Amazon", role: "Master"}),
 		new Machine({provider: "Amazon", role: "Worker"})]);`

@@ -11,9 +11,9 @@ func initSpec(src string) (Stitch, error) {
 }
 
 func TestReach(t *testing.T) {
-	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
-	var b = new Label("b", [new Docker("ubuntu", {})]);
-	var c = new Label("c", [new Docker("ubuntu", {})]);
+	stc := `var a = new Label("a", [new Docker("ubuntu")]);
+	var b = new Label("b", [new Docker("ubuntu")]);
+	var c = new Label("c", [new Docker("ubuntu")]);
 	connect(new Port(22), a, b);
 	connect(new Port(22), b, c);
 
@@ -28,9 +28,9 @@ func TestReach(t *testing.T) {
 }
 
 func TestNeighbor(t *testing.T) {
-	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
-	var b = new Label("b", [new Docker("ubuntu", {})]);
-	var c = new Label("c", [new Docker("ubuntu", {})]);
+	stc := `var a = new Label("a", [new Docker("ubuntu")]);
+	var b = new Label("b", [new Docker("ubuntu")]);
+	var c = new Label("c", [new Docker("ubuntu")]);
 	connect(new Port(22), a, b);
 	connect(new Port(22), b, c);
 
@@ -43,9 +43,9 @@ func TestNeighbor(t *testing.T) {
 }
 
 func TestAnnotation(t *testing.T) {
-	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
-	var b = new Label("b", [new Docker("ubuntu", {})]);
-	var c = new Label("c", [new Docker("ubuntu", {})]);
+	stc := `var a = new Label("a", [new Docker("ubuntu")]);
+	var b = new Label("b", [new Docker("ubuntu")]);
+	var c = new Label("c", [new Docker("ubuntu")]);
 	connect(new Port(22), a, b);
 	connect(new Port(22), b, c);
 
@@ -60,9 +60,9 @@ func TestAnnotation(t *testing.T) {
 }
 
 func TestFail(t *testing.T) {
-	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
-	var b = new Label("b", [new Docker("ubuntu", {})]);
-	var c = new Label("c", [new Docker("ubuntu", {})]);
+	stc := `var a = new Label("a", [new Docker("ubuntu")]);
+	var b = new Label("b", [new Docker("ubuntu")]);
+	var c = new Label("c", [new Docker("ubuntu")]);
 	connect(new Port(22), a, b);
 	connect(new Port(22), b, c);
 
@@ -77,11 +77,11 @@ func TestFail(t *testing.T) {
 }
 
 func TestBetween(t *testing.T) {
-	stc := `var a = new Label("a", [new Docker("ubuntu", {})]);
-	var b = new Label("b", [new Docker("ubuntu", {})]);
-	var c = new Label("c", [new Docker("ubuntu", {})]);
-	var d = new Label("d", [new Docker("ubuntu", {})]);
-	var e = new Label("e", [new Docker("ubuntu", {})]);
+	stc := `var a = new Label("a", [new Docker("ubuntu")]);
+	var b = new Label("b", [new Docker("ubuntu")]);
+	var c = new Label("c", [new Docker("ubuntu")]);
+	var d = new Label("d", [new Docker("ubuntu")]);
+	var e = new Label("e", [new Docker("ubuntu")]);
 
 	connect(new Port(22), a, b);
 	connect(new Port(22), a, c);

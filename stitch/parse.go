@@ -224,19 +224,35 @@ func parseConnection(v otto.Value) (c Connection, err error) {
 	return c, err
 }
 
-func parseLabel(v otto.Value) (l Label, err error) {
+type jsLabel struct {
+	name        string
+	containers  []Container
+	annotations []string
+}
+
+func (label jsLabel) toStitchLabel() Label {
+	stitchLabel := Label{
+		Name:        label.name,
+		Annotations: label.annotations,
+	}
+	for _, c := range label.containers {
+		stitchLabel.IDs = append(stitchLabel.IDs, c.ID)
+	}
+	return stitchLabel
+}
+
+func parseLabel(v otto.Value) (l jsLabel, err error) {
 	err = forField(v, func(key string, val otto.Value) (err error) {
 		switch key {
 		case labelNameKey:
-			l.Name, err = val.ToString()
+			l.name, err = val.ToString()
 		case labelContainersKey:
 			err = parseArray(val, parseContainerGeneric,
-				func(containerIntf interface{}) {
-					l.IDs = append(l.IDs,
-						containerIntf.(Container).ID)
+				func(c interface{}) {
+					l.containers = append(l.containers, c.(Container))
 				})
 		case labelAnnotationsKey:
-			l.Annotations, err = parseStringSlice(val)
+			l.annotations, err = parseStringSlice(val)
 		}
 		return err
 	})
@@ -248,7 +264,7 @@ func parseLabelName(v otto.Value) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return label.Name, nil
+	return label.name, nil
 }
 
 func isEmptySlice(intf interface{}) bool {
@@ -321,12 +337,10 @@ func parseStringSlice(v otto.Value) ([]string, error) {
 
 func parseContext(vm *otto.Otto) (evalCtx, error) {
 	ctx := evalCtx{
-		make(map[int]Container),
-		make(map[string]Label),
-		make(map[Connection]struct{}),
-		make(map[Placement]struct{}),
-		[]Machine{},
-		[]invariant{},
+		containers:  make(map[int]Container),
+		labels:      make(map[string]Label),
+		connections: make(map[Connection]struct{}),
+		placements:  make(map[Placement]struct{}),
 	}
 
 	vmCtx, err := vm.Get("ctx")
@@ -356,20 +370,23 @@ func parseContext(vm *otto.Otto) (evalCtx, error) {
 		case "labels":
 			err = parseArray(val, parseLabelGeneric,
 				func(l interface{}) {
-					label := l.(Label)
-					ctx.labels[label.Name] = label
-				})
-		case "containers":
-			err = parseArray(val, parseContainerGeneric,
-				func(c interface{}) {
-					container := c.(Container)
-					ctx.containers[container.ID] = container
+					label := l.(jsLabel)
+					ctx.labels[label.name] = label.toStitchLabel()
+					for _, c := range label.containers {
+						ctx.containers[c.ID] = c
+					}
 				})
 		case "placements":
 			err = parseArray(val, parsePlacementGeneric,
 				func(p interface{}) {
 					ctx.placements[p.(Placement)] = struct{}{}
 				})
+		case "namespace":
+			ctx.namespace, err = val.ToString()
+		case "maxPrice":
+			ctx.maxPrice, err = val.ToFloat()
+		case "adminACL":
+			ctx.adminACL, err = parseStringSlice(val)
 		}
 		return err
 	})

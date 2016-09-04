@@ -1,7 +1,7 @@
 var image = "quilt/redis";
 
 function createMaster(auth) {
-    var masterContainer = new Docker(image, {args: ["run"]});
+    var masterContainer = new Docker(image, ["run"]);
     masterContainer.setEnv("AUTH", auth);
     masterContainer.setEnv("ROLE", "master");
     return new Label(_.uniqueId("redis-ms"), [masterContainer]);
@@ -9,7 +9,7 @@ function createMaster(auth) {
 
 function createWorkers(n, auth, master) {
     var workers = _(n).times(function() {
-        return new Docker(image, {args: ["run"]});
+        return new Docker(image, ["run"]);
     });
     for (var i = 0 ; i<workers.length ; i++) {
         workers[i].setEnv("ROLE", "worker");

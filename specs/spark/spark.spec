@@ -5,9 +5,7 @@ function commaSepHosts(labels) {
 }
 
 function createMasters(n, zookeeper) {
-    var containers = _(n).times(function () {
-        return new Docker(image, {args: ["run", "master"]})
-    });
+    var containers = new Docker(image, ["run", "master"]).replicate(n);
 
     if (zookeeper) {
         var zookeeperHosts = commaSepHosts(zookeeper);
@@ -16,19 +14,16 @@ function createMasters(n, zookeeper) {
         }
     }
 
-    return new Label(_.uniqueId("spark-ms"), containers);
+    return new Label("spark-ms", containers);
 }
 
 function createWorkers(n, masters) {
     var masterHosts = masters.children().join(",");
-    var containers = _(n).times(function () {
-        return new Docker(image,
-            {
-                args: ["run", "worker"],
-                env: {"MASTERS": masterHosts},
-            })});
+    var containers = new Docker(image, ["run", "worker"])
+        .withEnv({"MASTERS": masterHosts})
+        .replicate(n);
 
-    return new Label(_.uniqueId("spark-wk"), containers);
+    return new Label("spark-wk", containers);
 }
 
 function link(masters, workers, zookeeper) {
@@ -50,7 +45,7 @@ function Spark(nMaster, nWorker, zookeeper) {
 Spark.prototype.job = function(command) {
     var masters = this.masters.containers;
     for (var i = 0 ; i<masters.length ; i++) {
-        masters[i].setEnv("JOB", command);
+        masters[i].env["JOB"] = command;
     }
 }
 
