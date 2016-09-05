@@ -15,7 +15,10 @@ RUN VER=1.7 \
 && wget https://storage.googleapis.com/golang/go$VER.linux-amd64.tar.gz \
 && gunzip -c go$VER.linux-amd64.tar.gz | tar x \
 && go get -u github.com/NetSys/quilt \
+&& cd $GOPATH/src/github.com/NetSys/quilt \
+&& git checkout paper \
 && go test github.com/NetSys/quilt/... \
+&& cd /tmp/build \
 && go install github.com/NetSys/quilt \
 && cp $GOPATH/bin/* /\
 && git -C "$GOPATH/src/github.com/NetSys/quilt/" show --pretty=medium --no-patch \
