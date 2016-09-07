@@ -35,12 +35,12 @@ func TestImplementsSingleLabel(t *testing.T) {
 	}
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         1.green.q
+	exp := `1.1.1.1         1.green
 1.2.2.2         abcdefghijkl
-1.3.3.3         1.blue.q
-1.4.4.4         2.blue.q
-10.0.0.2        blue.q
-10.0.0.3        green.q` + localhosts()
+1.3.3.3         1.blue
+1.4.4.4         2.blue
+10.0.0.2        blue
+10.0.0.3        green` + localhosts()
 
 	if exp != actual {
 		t.Errorf("Generated wrong single label /etc/hosts."+
@@ -58,16 +58,16 @@ func TestImplementsMultipleLabels(t *testing.T) {
 	}
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         1.green.q
-1.2.2.2         1.red.q
-1.3.3.3         1.blue.q
-1.3.3.3         2.red.q
+	exp := `1.1.1.1         1.green
+1.2.2.2         1.red
+1.3.3.3         1.blue
+1.3.3.3         2.red
 1.3.3.3         abcdefghijkl
-1.4.4.4         2.blue.q
-1.4.4.4         3.red.q
-10.0.0.1        red.q
-10.0.0.2        blue.q
-10.0.0.3        green.q` + localhosts()
+1.4.4.4         2.blue
+1.4.4.4         3.red
+10.0.0.1        red
+10.0.0.2        blue
+10.0.0.3        green` + localhosts()
 
 	if exp != actual {
 		t.Errorf("Generated wrong multi-label /etc/hosts"+
@@ -75,7 +75,7 @@ func TestImplementsMultipleLabels(t *testing.T) {
 	}
 }
 
-// Both red and blue connect to green. Make sure that green.q only appears once in
+// Both red and blue connect to green. Make sure that green only appears once in
 // /etc/hosts.
 func TestDuplicateConnections(t *testing.T) {
 	labels, connections := defaultLabelsConnections()
@@ -89,16 +89,16 @@ func TestDuplicateConnections(t *testing.T) {
 	connections["blue"] = append(connections["blue"], "green")
 
 	actual := generateEtcHosts(dbc, labels, connections)
-	exp := `1.1.1.1         1.green.q
-1.2.2.2         1.red.q
-1.3.3.3         1.blue.q
-1.3.3.3         2.red.q
-1.4.4.4         2.blue.q
-1.4.4.4         3.red.q
+	exp := `1.1.1.1         1.green
+1.2.2.2         1.red
+1.3.3.3         1.blue
+1.3.3.3         2.red
+1.4.4.4         2.blue
+1.4.4.4         3.red
 1.4.4.4         abcdefghijkl
-10.0.0.1        red.q
-10.0.0.2        blue.q
-10.0.0.3        green.q` + localhosts()
+10.0.0.1        red
+10.0.0.2        blue
+10.0.0.3        green` + localhosts()
 
 	if exp != actual {
 		t.Errorf("Generated wrong /etc/hosts for duplicate connections."+

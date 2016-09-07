@@ -1149,11 +1149,11 @@ func generateEtcHosts(dbc db.Container, labels map[string]db.Label,
 			}
 
 			if ip := labels[toLabel].IP; ip != "" {
-				newHosts[entry{ip, toLabel + ".q"}] = struct{}{}
+				newHosts[entry{ip, toLabel}] = struct{}{}
 			}
 			for i, cIP := range labels[toLabel].ContainerIPs {
 				// The hostname prefix starts from 1 for readability.
-				host := fmt.Sprintf("%d.%s.q", i+1, toLabel)
+				host := fmt.Sprintf("%d.%s", i+1, toLabel)
 				newHosts[entry{cIP, host}] = struct{}{}
 			}
 		}

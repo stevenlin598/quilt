@@ -221,11 +221,11 @@ func TestLabel(t *testing.T) {
 			},
 		})
 
-	expHostname := "foo.q"
+	expHostname := "foo"
 	checkJavascript(t, `var foo = new Label("foo", []);
 	return foo.hostname();`, expHostname)
 
-	expChildren := []string{"1.foo.q", "2.foo.q"}
+	expChildren := []string{"1.foo", "2.foo"}
 	checkJavascript(t, `
 	var foo = new Label("foo",
 		[new Docker("bar"), new Docker("baz")]);
@@ -302,7 +302,7 @@ func TestRequire(t *testing.T) {
 		return new Label("foo", []);
 	};`), 0644)
 	checkJavascript(t, `testImport = require('testImport');
-	return testImport.getLabel().hostname()`, "foo.q")
+	return testImport.getLabel().hostname()`, "foo")
 
 	// Import with an import
 	util.WriteFile("square.spec", []byte(`

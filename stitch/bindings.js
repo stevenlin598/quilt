@@ -65,13 +65,13 @@ function Label(name, containers) {
 }
 
 Label.prototype.hostname = function() {
-    return this.name + ".q";
+    return this.name;
 };
 
 Label.prototype.children = function() {
     var res = [];
     for (var i = 1; i < this.containers.length + 1; i++) {
-        res.push(i + "." + this.name + ".q");
+        res.push(i + "." + this.name);
     }
     return res;
 };
