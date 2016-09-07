@@ -37,8 +37,10 @@ type Provider interface {
 // New returns an empty instance of the Provider represented by `dbp`
 func New(dbp db.Provider) Provider {
 	switch dbp {
-	case db.Amazon:
-		return &amazonCluster{}
+	case db.AmazonSpot:
+		return &amazonSpot{}
+	case db.AmazonReserved:
+		return &amazonReserved{}
 	case db.Google:
 		return &gceCluster{}
 	case db.Azure:
@@ -50,18 +52,51 @@ func New(dbp db.Provider) Provider {
 	}
 }
 
-// GroupBy transforms the `machines` into a map of `db.Provider` to the machines
+// GroupByProvider transforms the `machines` into a map of `db.Provider` to the machines
 // with that provider.
-func GroupBy(machines []Machine) map[db.Provider][]Machine {
+func GroupByProvider(machines []Machine) map[db.Provider][]Machine {
 	machineMap := make(map[db.Provider][]Machine)
 	for _, m := range machines {
-		if _, ok := machineMap[m.Provider]; !ok {
-			machineMap[m.Provider] = []Machine{}
-		}
 		machineMap[m.Provider] = append(machineMap[m.Provider], m)
 	}
-
 	return machineMap
+}
+
+func groupByRegion(machines []Machine) map[string][]Machine {
+	machineMap := make(map[string][]Machine)
+	for _, m := range machines {
+		machineMap[m.Region] = append(machineMap[m.Region], m)
+	}
+	return machineMap
+}
+
+type bootRequest struct {
+	cfg      string
+	size     string
+	region   string
+	diskSize int
+}
+
+func bootRequests(machines []Machine) map[bootRequest]int64 {
+	bootReqMap := make(map[bootRequest]int64)
+	for _, m := range machines {
+		br := bootRequest{
+			cfg:      cloudConfigUbuntu(m.SSHKeys, "wily"),
+			size:     m.Size,
+			region:   m.Region,
+			diskSize: m.DiskSize,
+		}
+		bootReqMap[br] = bootReqMap[br] + 1
+	}
+	return bootReqMap
+}
+
+func getIDs(machines []Machine) []string {
+	var ids []string
+	for _, m := range machines {
+		ids = append(ids, m.ID)
+	}
+	return ids
 }
 
 // DefaultRegion populates `m.Region` for the provided db.Machine if one isn't
@@ -74,7 +109,7 @@ func DefaultRegion(m db.Machine) db.Machine {
 
 	region := ""
 	switch m.Provider {
-	case "Amazon":
+	case "AmazonSpot", "AmazonReserved":
 		region = "us-west-1"
 	case "Google":
 		region = "us-east1-b"

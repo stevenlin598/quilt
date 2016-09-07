@@ -30,7 +30,7 @@ func TestMachineResponse(t *testing.T) {
 	conn.Transact(func(view db.Database) error {
 		m := view.InsertMachine()
 		m.Role = db.Master
-		m.Provider = db.Amazon
+		m.Provider = db.AmazonSpot
 		m.Size = "size"
 		m.PublicIP = "8.8.8.8"
 		m.PrivateIP = "9.9.9.9"
@@ -39,7 +39,7 @@ func TestMachineResponse(t *testing.T) {
 		return nil
 	})
 
-	exp := `[{"ID":1,"Role":"Master","Provider":"Amazon","Region":"",` +
+	exp := `[{"ID":1,"Role":"Master","Provider":"AmazonSpot","Region":"",` +
 		`"Size":"size","DiskSize":0,"SSHKeys":null,"CloudID":"",` +
 		`"PublicIP":"8.8.8.8","PrivateIP":"9.9.9.9","Connected":false}]`
 
@@ -94,9 +94,9 @@ func TestRun(t *testing.T) {
 
 	createMachineStitch :=
 		`deployMachines(new Machine(
-			{provider: "Amazon", size: "m4.large", role: "Master"}));
+			{provider: "AmazonSpot", size: "m4.large", role: "Master"}));
 		deployMachines(new Machine(
-			{provider: "Amazon", size: "m4.large", role: "Worker"}));`
+			{provider: "AmazonSpot", size: "m4.large", role: "Worker"}));`
 
 	_, err := s.Run(context.Background(),
 		&pb.RunRequest{Stitch: createMachineStitch})

@@ -24,7 +24,7 @@ setNamespace("kklin");
 setAdminACL(["local"]);
 
 var baseMachine = new Machine({
-    provider: "Amazon",
+    provider: "AmazonSpot",
     region: "us-west-1",
     size: "m4.large",
     diskSize: 32,

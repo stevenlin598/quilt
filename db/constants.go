@@ -53,8 +53,11 @@ func PBToRole(p pb.MinionConfig_Role) Role {
 type Provider string
 
 const (
-	// Amazon implements amazon EC2.
-	Amazon Provider = "Amazon"
+	// AmazonSpot implements Spot Instances on Amazon EC2.
+	AmazonSpot Provider = "AmazonSpot"
+
+	// AmazonReserved implements Reserved Instances on Amazon EC2.
+	AmazonReserved = "AmazonReserved"
 
 	// Google implements Google Cloud Engine.
 	Google = "Google"
@@ -69,7 +72,7 @@ const (
 // ParseProvider returns the Provider represented by 'name' or an error.
 func ParseProvider(name string) (Provider, error) {
 	switch name {
-	case "Amazon", "Google", "Vagrant", "Azure":
+	case "AmazonSpot", "AmazonReserved", "Google", "Vagrant", "Azure":
 		return Provider(name), nil
 	default:
 		return "", errors.New("unknown provider")

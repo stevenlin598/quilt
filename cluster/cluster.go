@@ -12,7 +12,8 @@ import (
 var sleep = time.Sleep
 
 // Store the providers in a variable so we can change it in the tests
-var allProviders = []db.Provider{db.Amazon, db.Azure, db.Google, db.Vagrant}
+var allProviders = []db.Provider{db.AmazonSpot, db.AmazonReserved, db.Azure,
+	db.Google, db.Vagrant}
 
 type cluster struct {
 	conn    db.Conn
@@ -108,7 +109,7 @@ func (clst cluster) updateCloud(machines []provider.Machine, boot bool) {
 		Infof("Attempt to %s machines.", actionString)
 
 	noFailures := true
-	groupedMachines := provider.GroupBy(machines)
+	groupedMachines := provider.GroupByProvider(machines)
 	for p, providerMachines := range groupedMachines {
 		providerInst, ok := clst.providers[p]
 		if !ok {

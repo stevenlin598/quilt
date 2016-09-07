@@ -18,7 +18,7 @@ func TestEngine(t *testing.T) {
 
 	pre := `setNamespace("namespace");
 	setAdminACL(["1.2.3.4/32"]);
-	var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
+	var baseMachine = new Machine({provider: "AmazonSpot", size: "m4.large"});`
 	conn := db.New()
 
 	code := pre + `deployMasters(2, baseMachine)
@@ -201,7 +201,7 @@ func TestEngine(t *testing.T) {
 	/* Test mixed providers. */
 	code = `setNamespace("namespace");
 	deployMachines([
-		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
+		new Machine({provider: "AmazonSpot", size: "m4.large", role: "Master"}),
 		new Machine({provider: "Vagrant", size: "v.large", role: "Master"}),
 		new Machine({provider: "Azure", size: "a.large", role: "Worker"}),
 		new Machine({provider: "Google", size: "g.large", role: "Worker"})]);`
@@ -214,7 +214,8 @@ func TestEngine(t *testing.T) {
 			return m.Role == db.Worker
 		})
 
-		if !providersInSlice(masters, db.ProviderSlice{db.Amazon, db.Vagrant}) {
+		if !providersInSlice(masters, db.ProviderSlice{
+			db.AmazonSpot, db.Vagrant}) {
 			return fmt.Errorf("bad masters: %s", spew.Sdump(masters))
 		}
 
@@ -230,16 +231,17 @@ func TestEngine(t *testing.T) {
 	/* Test that machines with different providers don't match. */
 	code = `setNamespace("namespace");
 	deployMachines([
-		new Machine({provider: "Amazon", size: "m4.large", role: "Master"}),
+		new Machine({provider: "AmazonSpot", size: "m4.large", role: "Master"}),
 		new Machine({provider: "Azure", size: "a.large", role: "Master"}),
-		new Machine({provider: "Amazon", size: "m4.large", role: "Worker"})]);`
+		new Machine({provider: "AmazonSpot", size: "m4.large",
+			role: "Worker"})]);`
 	UpdatePolicy(conn, prog(t, code))
 	err = conn.Transact(func(view db.Database) error {
 		masters := view.SelectFromMachine(func(m db.Machine) bool {
 			return m.Role == db.Master
 		})
 
-		if !providersInSlice(masters, db.ProviderSlice{db.Amazon, db.Azure}) {
+		if !providersInSlice(masters, db.ProviderSlice{db.AmazonSpot, db.Azure}) {
 			return fmt.Errorf("bad masters: %s", spew.Sdump(masters))
 		}
 		return nil
@@ -290,23 +292,23 @@ func TestContainer(t *testing.T) {
 	}
 
 	code := `deployMachines([
-		new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);
+		new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);
 	new Label("Red", [new Docker("alpine"), new Docker("alpine")]);
 	new Label("Blue", [new Docker("alpine"), new Docker("alpine")]);`
 	check(code, 2, 2, 0)
 
 	code = `deployMachines([
-		new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);
+		new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);
 	new Label("Red", [new Docker("alpine"),
 		new Docker("alpine"),
 		new Docker("alpine")]);`
 	check(code, 3, 0, 0)
 
 	code = `deployMachines([
-		new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);
+		new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);
 	var alpineCreator = function() {
 		return new Docker("alpine");
 	}
@@ -316,8 +318,8 @@ func TestContainer(t *testing.T) {
 	check(code, 1, 5, 10)
 
 	code = `deployMachines([
-		new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);
+		new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);
 	var alpineCreator = function() {
 		return new Docker("alpine");
 	}
@@ -327,8 +329,8 @@ func TestContainer(t *testing.T) {
 	check(code, 30, 4, 7)
 
 	code = `deployMachines([
-		new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);`
+		new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);`
 	check(code, 0, 0, 0)
 }
 
@@ -336,7 +338,8 @@ func TestSort(t *testing.T) {
 	spew := spew.NewDefaultConfig()
 	spew.MaxDepth = 2
 
-	pre := `var baseMachine = new Machine({provider: "Amazon", size: "m4.large"});`
+	pre := `var baseMachine = new Machine(
+		{provider: "AmazonSpot", size: "m4.large"});`
 	conn := db.New()
 
 	UpdatePolicy(conn, prog(t, pre+`deployMasters(3, baseMachine);
@@ -420,8 +423,8 @@ func TestACLs(t *testing.T) {
 
 	code := `setAdminACL(["1.2.3.4/32", "local"]);
 	deployMachines([
-	new Machine({provider: "Amazon", role: "Master"}),
-		new Machine({provider: "Amazon", role: "Worker"})]);`
+	new Machine({provider: "AmazonSpot", role: "Master"}),
+		new Machine({provider: "AmazonSpot", role: "Worker"})]);`
 
 	myIP = func() (string, error) {
 		return "5.6.7.8", nil

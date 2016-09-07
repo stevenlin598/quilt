@@ -33,7 +33,7 @@ func TestUnmarshalMachine(t *testing.T) {
 	t.Parallel()
 
 	apiClient := mockAPIClient{
-		mockResponse: `[{"ID":1,"Role":"Master","Provider":"Amazon",` +
+		mockResponse: `[{"ID":1,"Role":"Master","Provider":"AmazonSpot",` +
 			`"Region":"","Size":"size","DiskSize":0,"SSHKeys":null,` +
 			`"CloudID":"","PublicIP":"8.8.8.8","PrivateIP":"9.9.9.9"}]`,
 	}
@@ -48,7 +48,7 @@ func TestUnmarshalMachine(t *testing.T) {
 		{
 			ID:        1,
 			Role:      db.Master,
-			Provider:  db.Amazon,
+			Provider:  db.AmazonSpot,
 			Size:      "size",
 			PublicIP:  "8.8.8.8",
 			PrivateIP: "9.9.9.9",
