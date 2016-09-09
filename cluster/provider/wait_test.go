@@ -32,7 +32,7 @@ func TestWaiterError(t *testing.T) {
 		lock: &sync.Mutex{},
 	}
 	for i := 0; i < 10; i++ {
-		batchWaiter.waiters <- testWaiter
+		batchWaiter.add(testWaiter)
 	}
 
 	err := batchWaiter.wait()
@@ -41,9 +41,9 @@ func TestWaiterError(t *testing.T) {
 	}
 }
 
-type waitSecond struct{}
+type waitTimer struct{}
 
-func (w waitSecond) wait() error {
+func (w waitTimer) wait() error {
 	time.Sleep(300 * time.Millisecond)
 	return nil
 }
@@ -55,7 +55,7 @@ func TestWaitsInParallel(t *testing.T) {
 	batchWaiter := newWaiter()
 	defer close(batchWaiter.waiters)
 	for i := 0; i < 100; i++ {
-		batchWaiter.waiters <- waitSecond{}
+		batchWaiter.add(waitTimer{})
 	}
 	batchWaiter.wait()
 	endTime := time.Now()

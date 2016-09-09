@@ -53,10 +53,10 @@ func (clst amazonSpot) Boot(bootSet []Machine) error {
 			return err
 		}
 
-		waiter.waiters <- spotBooted{
+		waiter.add(spotBooted{
 			session: session,
 			ids:     spotIDs,
-		}
+		})
 	}
 
 	return waiter.wait()
@@ -118,10 +118,10 @@ func (clst amazonSpot) Stop(machines []Machine) error {
 			if err != nil {
 				return err
 			}
-			waiter.waiters <- instanceStopped{
+			waiter.add(instanceStopped{
 				session: session,
 				ids:     instIds,
-			}
+			})
 		}
 
 		_, err = session.CancelSpotInstanceRequests(

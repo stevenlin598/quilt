@@ -52,27 +52,31 @@ type batchWaiter struct {
 
 // wait waits until all waiters have returned, and returns the first error,
 // if any.
-func (w *batchWaiter) wait() error {
-	w.waitGroup.Wait()
+func (bw *batchWaiter) wait() error {
+	bw.waitGroup.Wait()
 	select {
-	case err := <-w.err:
+	case err := <-bw.err:
 		return err
 	default:
 		return nil
 	}
 }
 
+func (bw *batchWaiter) add(w waiter) {
+	bw.waitGroup.Add(1)
+	bw.waiters <- w
+}
+
 // listener spawns a Go routine that runs each waiter in parallel, and writes
 // the result to the error channel.
-func (w *batchWaiter) listener() {
-	for req := range w.waiters {
-		w.waitGroup.Add(1)
+func (bw *batchWaiter) listener() {
+	for req := range bw.waiters {
 		go func(req waiter) {
-			defer w.waitGroup.Done()
+			defer bw.waitGroup.Done()
 			if err := req.wait(); err != nil {
 				// Only write the error if we're the first one.
 				select {
-				case w.err <- err:
+				case bw.err <- err:
 				default:
 				}
 			}

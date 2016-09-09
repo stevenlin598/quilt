@@ -37,10 +37,10 @@ func (clst amazonReserved) Boot(bootSet []Machine) error {
 			bootedIDs = append(bootedIDs, *inst.InstanceId)
 		}
 
-		waiter.waiters <- instanceBooted{
+		waiter.add(instanceBooted{
 			session: session,
 			ids:     bootedIDs,
-		}
+		})
 	}
 
 	return waiter.wait()
@@ -61,10 +61,10 @@ func (clst amazonReserved) Stop(machines []Machine) error {
 			return err
 		}
 
-		waiter.waiters <- instanceStopped{
+		waiter.add(instanceStopped{
 			session: session,
 			ids:     ids,
-		}
+		})
 	}
 
 	return waiter.wait()
