@@ -214,6 +214,18 @@ func (clst cluster) syncACLs(acls []string, machines []db.Machine) {
 	// Providers with at least one machine.
 	prvdrSet := map[db.Provider]struct{}{}
 	for _, m := range machines {
+		// AmazonSpot and AmazonReserved share the same ACL backend, so if either
+		// provider will have their ACLs set, the other also needs to set the same
+		// ACLs or else they may get unset.
+		// XXX: The cleaner way to fix this is to somehow collapse AmazonReserved
+		// and AmazonSpot into one provider when setting ACLs.. right now,
+		// we'll redundantly set double the ACLs.
+		switch m.Provider {
+		case db.AmazonSpot:
+			prvdrSet[db.AmazonReserved] = struct{}{}
+		case db.AmazonReserved:
+			prvdrSet[db.AmazonSpot] = struct{}{}
+		}
 		prvdrSet[m.Provider] = struct{}{}
 	}
 
