@@ -62,7 +62,7 @@ func (clst amazonSpot) Boot(bootSet []Machine) error {
 	return waiter.wait()
 }
 
-func (clst amazonSpot) tagSpotRequests(session ec2.EC2, spotIDs []string) (err error) {
+func (clst amazonSpot) tagSpotRequests(session EC2Client, spotIDs []string) (err error) {
 	for i := 0; i < 30; i++ {
 		_, err = session.CreateTags(&ec2.CreateTagsInput{
 			Tags: []*ec2.Tag{
@@ -221,6 +221,7 @@ func (clst amazonSpot) allSpots() ([]awsMachine, error) {
 			machines = append(machines, awsMachine{
 				namespace: namespace,
 				spotID:    resolveString(spot.SpotInstanceRequestId),
+				region:    region,
 			})
 		}
 	}

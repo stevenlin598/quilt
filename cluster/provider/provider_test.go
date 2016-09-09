@@ -10,6 +10,8 @@ import (
 )
 
 func TestDefaultRegion(t *testing.T) {
+	t.Parallel()
+
 	exp := "foo"
 	m := db.Machine{Provider: "AmazonSpot", Region: exp}
 	m = DefaultRegion(m)
@@ -68,6 +70,8 @@ func TestDefaultRegion(t *testing.T) {
 }
 
 func TestConstraints(t *testing.T) {
+	t.Parallel()
+
 	checkConstraint := func(descriptions []constants.Description, ram stitch.Range,
 		cpu stitch.Range, maxPrice float64, exp string) {
 		resSize := pickBestSize(descriptions, ram, cpu, maxPrice)
@@ -124,6 +128,8 @@ func TestConstraints(t *testing.T) {
 }
 
 func TestNewProviderSuccess(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Error("provider.New panicked on valid provider")
@@ -137,6 +143,8 @@ func TestNewProviderSuccess(t *testing.T) {
 }
 
 func TestNewProviderFailure(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("provider.New did not panic on invalid provider")
@@ -146,6 +154,8 @@ func TestNewProviderFailure(t *testing.T) {
 }
 
 func TestGroupByProvider(t *testing.T) {
+	t.Parallel()
+
 	machines := []Machine{
 		{Provider: db.Google}, {Provider: db.AmazonSpot}, {Provider: db.Google},
 		{Provider: db.Google}, {Provider: db.Azure},
@@ -176,6 +186,8 @@ func TestGroupByProvider(t *testing.T) {
 }
 
 func TestGroupByRegion(t *testing.T) {
+	t.Parallel()
+
 	machines := []Machine{
 		{Provider: db.AmazonSpot, Region: "west"},
 		{Provider: db.AmazonSpot, Region: "west"},
@@ -194,6 +206,8 @@ func TestGroupByRegion(t *testing.T) {
 }
 
 func TestGetIDs(t *testing.T) {
+	t.Parallel()
+
 	machines := []Machine{
 		{ID: "foo"},
 		{ID: "bar"},
@@ -206,6 +220,8 @@ func TestGetIDs(t *testing.T) {
 }
 
 func TestBootRequests(t *testing.T) {
+	t.Parallel()
+
 	machines := []Machine{
 		{Size: "m4.large", Region: "us-west-1", DiskSize: 32},
 		{Size: "m4.large", Region: "us-west-1", DiskSize: 32},
@@ -238,8 +254,6 @@ func TestBootRequests(t *testing.T) {
 }
 
 func TestCloudConfig(t *testing.T) {
-	t.Parallel()
-
 	cloudConfigFormat = "(%v) (%v) (%v)"
 
 	res := cloudConfigUbuntu([]string{"a", "b"}, "1")

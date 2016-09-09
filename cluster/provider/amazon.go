@@ -25,13 +25,64 @@ var amis = map[string]string{
 // AmazonReserved. This is namely setting ACLs, listing instances, and choosing
 // sizes.
 type amazonCluster struct {
-	sessions map[string]ec2.EC2
+	sessionGetter func(string) EC2Client
+	sessions      map[string]EC2Client
 
 	namespace string
 }
 
+// EC2Client defines an interface that can be mocked out for interacting with EC2.
+type EC2Client interface {
+	AuthorizeSecurityGroupIngress(*ec2.AuthorizeSecurityGroupIngressInput) (
+		*ec2.AuthorizeSecurityGroupIngressOutput, error)
+
+	CancelSpotInstanceRequests(*ec2.CancelSpotInstanceRequestsInput) (
+		*ec2.CancelSpotInstanceRequestsOutput, error)
+
+	CreateSecurityGroup(*ec2.CreateSecurityGroupInput) (
+		*ec2.CreateSecurityGroupOutput, error)
+
+	CreateTags(*ec2.CreateTagsInput) (*ec2.CreateTagsOutput, error)
+
+	DescribeSecurityGroups(*ec2.DescribeSecurityGroupsInput) (
+		*ec2.DescribeSecurityGroupsOutput, error)
+
+	DescribeInstances(*ec2.DescribeInstancesInput) (
+		*ec2.DescribeInstancesOutput, error)
+
+	DescribeSpotInstanceRequests(*ec2.DescribeSpotInstanceRequestsInput) (
+		*ec2.DescribeSpotInstanceRequestsOutput, error)
+
+	DescribeVolumes(*ec2.DescribeVolumesInput) (
+		*ec2.DescribeVolumesOutput, error)
+
+	RevokeSecurityGroupIngress(*ec2.RevokeSecurityGroupIngressInput) (
+		*ec2.RevokeSecurityGroupIngressOutput, error)
+
+	TerminateInstances(*ec2.TerminateInstancesInput) (
+		*ec2.TerminateInstancesOutput, error)
+
+	RequestSpotInstances(*ec2.RequestSpotInstancesInput) (
+		*ec2.RequestSpotInstancesOutput, error)
+
+	RunInstances(*ec2.RunInstancesInput) (*ec2.Reservation, error)
+
+	WaitUntilInstanceExists(*ec2.DescribeInstancesInput) error
+
+	WaitUntilInstanceTerminated(*ec2.DescribeInstancesInput) error
+
+	WaitUntilSpotInstanceRequestFulfilled(
+		*ec2.DescribeSpotInstanceRequestsInput) error
+}
+
+func newAmazonCluster(sessionGetter func(string) EC2Client) amazonCluster {
+	return amazonCluster{
+		sessions:      make(map[string]EC2Client),
+		sessionGetter: sessionGetter,
+	}
+}
+
 func (clst *amazonCluster) Connect(namespace string) error {
-	clst.sessions = make(map[string]ec2.EC2)
 	clst.namespace = namespace
 	if _, err := clst.listInstances(); err != nil {
 		return errors.New("AWS failed to connect")
@@ -39,13 +90,15 @@ func (clst *amazonCluster) Connect(namespace string) error {
 	return nil
 }
 
-func (clst amazonCluster) getSession(region string) ec2.EC2 {
-	if _, ok := clst.sessions[region]; !ok {
-		session := session.New()
-		session.Config.Region = aws.String(region)
+func newEC2Session(region string) EC2Client {
+	session := session.New()
+	session.Config.Region = aws.String(region)
+	return ec2.New(session)
+}
 
-		newEC2 := ec2.New(session)
-		clst.sessions[region] = *newEC2
+func (clst amazonCluster) getSession(region string) EC2Client {
+	if _, ok := clst.sessions[region]; !ok {
+		clst.sessions[region] = clst.sessionGetter(region)
 	}
 
 	return clst.sessions[region]
@@ -106,7 +159,7 @@ func resolveString(ptr *string) string {
 	return *ptr
 }
 
-func parseDiskSize(session ec2.EC2, inst ec2.Instance) (int, error) {
+func parseDiskSize(session EC2Client, inst ec2.Instance) (int, error) {
 	if len(inst.BlockDeviceMappings) == 0 {
 		return 0, nil
 	}

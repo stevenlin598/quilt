@@ -13,7 +13,7 @@ type waiter interface {
 }
 
 type awsWaitRequest struct {
-	session ec2.EC2
+	session EC2Client
 	ids     []string
 }
 
