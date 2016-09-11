@@ -94,7 +94,7 @@ func (getter ImportGetter) resolveSpecImports(folder string) error {
 }
 
 func (getter ImportGetter) checkSpec(file string, _ os.FileInfo, _ error) error {
-	if filepath.Ext(file) != ".spec" {
+	if filepath.Ext(file) != ".js" {
 		return nil
 	}
 	_, err := Compile(file,
@@ -106,7 +106,7 @@ func (getter ImportGetter) checkSpec(file string, _ os.FileInfo, _ error) error 
 }
 
 func (getter ImportGetter) get(name string) (string, error) {
-	modulePath := filepath.Join(getter.Path, name+".spec")
+	modulePath := filepath.Join(getter.Path, name+".js")
 	if _, err := os.Stat(modulePath); os.IsNotExist(err) && getter.AutoDownload {
 		getter.Download(name)
 	}

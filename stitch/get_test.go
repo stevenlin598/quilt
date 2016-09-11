@@ -55,11 +55,11 @@ func testCheckSpec(t *testing.T) {
 	}
 	util.AppFs = afero.NewMemMapFs()
 	util.AppFs.Mkdir("test", 777)
-	util.WriteFile("test/noDownload.spec",
+	util.WriteFile("test/noDownload.js",
 		[]byte(`require("nextimport/nextimport")`), 0644)
 	util.AppFs.Mkdir("nextimport", 777)
-	util.WriteFile("nextimport/nextimport.spec", []byte("dummy = 1;"), 0644)
-	if err := getter.checkSpec("test/noDownload.spec", nil, nil); err != nil {
+	util.WriteFile("nextimport/nextimport.js", []byte("dummy = 1;"), 0644)
+	if err := getter.checkSpec("test/noDownload.js", nil, nil); err != nil {
 		t.Error(err)
 	}
 
@@ -68,12 +68,12 @@ func testCheckSpec(t *testing.T) {
 	}
 
 	// Verify that call is made to GetSpec
-	util.WriteFile("test/toDownload.spec",
+	util.WriteFile("test/toDownload.js",
 		[]byte(`require("github.com/NetSys/quilt/specs/example")`), 0644)
 	expected := "StitchError: unable to open import " +
 		"github.com/NetSys/quilt/specs/example " +
-		"(path=github.com/NetSys/quilt/specs/example.spec)"
-	err := getter.checkSpec("test/toDownload.spec", nil, nil)
+		"(path=github.com/NetSys/quilt/specs/example.js)"
+	err := getter.checkSpec("test/toDownload.js", nil, nil)
 	if !strings.HasPrefix(err.Error(), expected) {
 		t.Errorf("'%s' does not begin with '%s'", err.Error(), expected)
 	}
@@ -98,7 +98,7 @@ func TestResolveSpecImports(t *testing.T) {
 	// is handled in testCheckSpec.
 	expected := "StitchError: unable to open import " +
 		"github.com/NetSys/quilt/specs/example " +
-		"(path=github.com/NetSys/quilt/specs/example.spec)"
+		"(path=github.com/NetSys/quilt/specs/example.js)"
 	if err := getter.resolveSpecImports("test"); err.Error() != expected {
 		t.Errorf("Resolve error didn't match: expected %q, got %q.",
 			expected, err.Error())

@@ -289,7 +289,7 @@ func TestRequire(t *testing.T) {
 	util.AppFs = afero.NewMemMapFs()
 
 	// Import returning a primitive.
-	util.WriteFile("math.spec", []byte(`
+	util.WriteFile("math.js", []byte(`
 	exports.square = function(x) {
 		return x*x;
 	};`), 0644)
@@ -297,7 +297,7 @@ func TestRequire(t *testing.T) {
 	return math.square(5)`, float64(25))
 
 	// Import returning a type.
-	util.WriteFile("testImport.spec", []byte(`
+	util.WriteFile("testImport.js", []byte(`
 	exports.getLabel = function() {
 		return new Label("foo", []);
 	};`), 0644)
@@ -305,11 +305,11 @@ func TestRequire(t *testing.T) {
 	return testImport.getLabel().hostname()`, "foo")
 
 	// Import with an import
-	util.WriteFile("square.spec", []byte(`
+	util.WriteFile("square.js", []byte(`
 	exports.square = function(x) {
 		return x*x;
 	};`), 0644)
-	util.WriteFile("cube.spec", []byte(`
+	util.WriteFile("cube.js", []byte(`
 	var square = require("square");
 	exports.cube = function(x) {
 		return x * square.square(x);
@@ -318,15 +318,15 @@ func TestRequire(t *testing.T) {
 	return cube.cube(5)`, float64(125))
 
 	// Directly assigned exports
-	util.WriteFile("square.spec", []byte("module.exports = function(x) {"+
+	util.WriteFile("square.js", []byte("module.exports = function(x) {"+
 		"return x*x }"), 0644)
 	checkJavascript(t, `var square = require('square');
 	return square(5)`, float64(25))
 
 	testSpec := `var square = require('square');
 	square(5)`
-	util.WriteFile("test.spec", []byte(testSpec), 0644)
-	compiled, err := Compile("test.spec", ImportGetter{
+	util.WriteFile("test.js", []byte(testSpec), 0644)
+	compiled, err := Compile("test.js", ImportGetter{
 		Path: ".",
 	})
 	if err != nil {
