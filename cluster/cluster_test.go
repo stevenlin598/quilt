@@ -34,6 +34,7 @@ type fakeProvider struct {
 
 	bootRequests []bootRequest
 	stopRequests []string
+	aclRequests  []string
 }
 
 func newFakeProvider(cloudConfig string) *fakeProvider {
@@ -46,6 +47,7 @@ func newFakeProvider(cloudConfig string) *fakeProvider {
 func (p *fakeProvider) clearLogs() {
 	p.bootRequests = []bootRequest{}
 	p.stopRequests = []string{}
+	p.aclRequests = []string{}
 }
 
 func (p *fakeProvider) List() ([]provider.Machine, error) {
@@ -76,7 +78,10 @@ func (p *fakeProvider) Stop(machines []provider.Machine) error {
 	return nil
 }
 
-func (p *fakeProvider) SetACLs(acls []string) error { return nil }
+func (p *fakeProvider) SetACLs(acls []string) error {
+	p.aclRequests = acls
+	return nil
+}
 
 func (p *fakeProvider) Connect(namespace string) error { return nil }
 
@@ -261,6 +266,26 @@ func TestSync(t *testing.T) {
 	})
 	checkSync(clst, FakeAmazon, []bootRequest{amazonXLargeBoot},
 		[]string{toRemove.CloudID})
+}
+
+func TestACLs(t *testing.T) {
+	clst := newTestCluster()
+	clst.syncACLs([]string{"admin"},
+		[]db.Machine{
+			{
+				Provider: FakeAmazon,
+				PublicIP: "8.8.8.8",
+			},
+			{},
+		},
+	)
+
+	exp := []string{"admin", "8.8.8.8/32"}
+	actual := clst.providers[FakeAmazon].(*fakeProvider).aclRequests
+
+	if !reflect.DeepEqual(exp, actual) {
+		t.Errorf("Wrong ACLs set:  expected %v, got %v.", exp, actual)
+	}
 }
 
 func emptySlices(slice1 interface{}, slice2 interface{}) bool {

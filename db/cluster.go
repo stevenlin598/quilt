@@ -14,7 +14,7 @@ type Cluster struct {
 	Spec      string
 
 	/* XXX: These belong in a separate administration table of some sort. */
-	ACLs []string
+	AdminACLs []string
 }
 
 // InsertCluster creates a new Cluster and interts it into 'db'.
@@ -57,7 +57,7 @@ func (c Cluster) tt() TableType {
 }
 
 func (c Cluster) String() string {
-	return fmt.Sprintf("Cluster-%d{%s, ACL: %s}", c.ID, c.Namespace, c.ACLs)
+	return fmt.Sprintf("Cluster-%d{%s, ACL: %s}", c.ID, c.Namespace, c.AdminACLs)
 }
 
 func (c Cluster) less(r row) bool {

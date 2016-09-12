@@ -36,7 +36,7 @@ func TestEngine(t *testing.T) {
 
 		if err != nil {
 			return err
-		} else if len(cluster.ACLs) != 1 {
+		} else if len(cluster.AdminACLs) != 1 {
 			return fmt.Errorf("bad cluster: %s", spew.Sdump(cluster))
 		}
 
@@ -421,10 +421,7 @@ func TestACLs(t *testing.T) {
 
 	conn := db.New()
 
-	code := `setAdminACL(["1.2.3.4/32", "local"]);
-	deployMachines([
-	new Machine({provider: "AmazonSpot", role: "Master"}),
-		new Machine({provider: "AmazonSpot", role: "Worker"})]);`
+	code := `setAdminACL(["1.2.3.4/32", "local"]);`
 
 	myIP = func() (string, error) {
 		return "5.6.7.8", nil
@@ -437,10 +434,10 @@ func TestACLs(t *testing.T) {
 			return err
 		}
 
-		if !reflect.DeepEqual(cluster.ACLs,
+		if !reflect.DeepEqual(cluster.AdminACLs,
 			[]string{"1.2.3.4/32", "5.6.7.8/32"}) {
 			return fmt.Errorf("bad ACLs: %s",
-				spew.Sdump(cluster.ACLs))
+				spew.Sdump(cluster.AdminACLs))
 		}
 
 		return nil
@@ -460,39 +457,9 @@ func TestACLs(t *testing.T) {
 			return err
 		}
 
-		if !reflect.DeepEqual(cluster.ACLs, []string{"1.2.3.4/32"}) {
+		if !reflect.DeepEqual(cluster.AdminACLs, []string{"1.2.3.4/32"}) {
 			return fmt.Errorf("bad ACLs: %s",
-				spew.Sdump(cluster.ACLs))
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Error(err.Error())
-	}
-
-	// Test allow traffic between machines
-	conn.Transact(func(view db.Database) error {
-		machines := view.SelectFromMachine(nil)
-		if len(machines) == 0 {
-			return errors.New("expected machines in database")
-		}
-		machines[0].PublicIP = "8.8.8.8"
-		view.Commit(machines[0])
-		return nil
-	})
-	UpdatePolicy(conn, prog(t, code))
-	err = conn.Transact(func(view db.Database) error {
-		cluster, err := view.GetCluster()
-
-		if err != nil {
-			return err
-		}
-
-		if !reflect.DeepEqual(cluster.ACLs,
-			[]string{"1.2.3.4/32", "8.8.8.8/32"}) {
-			return fmt.Errorf("bad ACLs: %s",
-				spew.Sdump(cluster.ACLs))
+				spew.Sdump(cluster.AdminACLs))
 		}
 
 		return nil

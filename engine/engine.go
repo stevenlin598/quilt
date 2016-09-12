@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/NetSys/quilt/cluster/provider"
 	"github.com/NetSys/quilt/db"
@@ -40,15 +39,6 @@ func updateTxn(view db.Database, stitch stitch.Stitch) error {
 		return err
 	}
 
-	// We can't process the ACLs with the rest of the cluster fields
-	// because this must occur after the cloud machines are synced with
-	// the database. If we didn't, inter-machine ACLs would get removed
-	// when the Quilt controller restarts, even if there are running cloud
-	// machines that still need to communicate.
-	if err = aclTxn(view, stitch); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -67,29 +57,8 @@ func clusterTxn(view db.Database, stitch stitch.Stitch) error {
 
 	cluster.Namespace = namespace
 	cluster.Spec = stitch.String()
+	cluster.AdminACLs = resolveACLs(stitch.QueryAdminACL())
 	view.Commit(cluster)
-	return nil
-}
-
-func aclTxn(view db.Database, stitch stitch.Stitch) error {
-	cluster, err := view.GetCluster()
-	if err != nil {
-		return err
-	}
-
-	machines := view.SelectFromMachine(func(m db.Machine) bool {
-		return m.PublicIP != ""
-	})
-	acls := resolveACLs(stitch.QueryAdminACL())
-
-	for _, m := range machines {
-		acls = append(acls, m.PublicIP+"/32")
-	}
-
-	sort.Strings(acls)
-	cluster.ACLs = acls
-	view.Commit(cluster)
-
 	return nil
 }
 

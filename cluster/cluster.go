@@ -139,16 +139,14 @@ func (clst cluster) updateCloud(machines []provider.Machine, boot bool) {
 }
 
 func (clst cluster) sync() {
-	var acls []string
+	var adminACLs []string
 	var machines []db.Machine
 	clst.conn.Transact(func(view db.Database) error {
 		dbCluster, _ := view.GetCluster()
 		machines = view.SelectFromMachine(nil)
-		acls = dbCluster.ACLs
+		adminACLs = dbCluster.AdminACLs
 		return nil
 	})
-
-	clst.syncACLs(acls, machines)
 
 	/* Each iteration of this loop does the following:
 	 *
@@ -169,6 +167,12 @@ func (clst cluster) sync() {
 		clst.updateCloud(bootSet, true)
 		clst.updateCloud(terminateSet, false)
 	}
+
+	// ACLs must be processed after Quilt learns about what machines are in
+	// the cloud.  If we didn't, inter-machine ACLs could get removed
+	// when the Quilt controller restarts, even if there are running cloud
+	// machines that still need to communicate.
+	clst.syncACLs(adminACLs, machines)
 }
 
 func (clst cluster) syncMachines() (bootSet, terminateSet []provider.Machine) {
@@ -210,10 +214,15 @@ func (clst cluster) syncMachines() (bootSet, terminateSet []provider.Machine) {
 	return bootSet, terminateSet
 }
 
-func (clst cluster) syncACLs(acls []string, machines []db.Machine) {
+func (clst cluster) syncACLs(adminACLs []string, machines []db.Machine) {
+	acls := adminACLs
 	// Providers with at least one machine.
 	prvdrSet := map[db.Provider]struct{}{}
 	for _, m := range machines {
+		if m.PublicIP != "" {
+			acls = append(acls, m.PublicIP+"/32")
+		}
+
 		// AmazonSpot and AmazonReserved share the same ACL backend, so if either
 		// provider will have their ACLs set, the other also needs to set the same
 		// ACLs or else they may get unset.
