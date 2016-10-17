@@ -3,7 +3,6 @@ package ssh
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -47,25 +46,6 @@ func (c *NativeClient) Connect(host string, keyPath string) error {
 	if err != nil {
 		return err
 	}
-
-	stdin, err := c.session.StdinPipe()
-	if err != nil {
-		return err
-	}
-	go io.Copy(stdin, os.Stdin)
-
-	stdout, err := c.session.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	go io.Copy(os.Stdout, stdout)
-
-	stderr, err := c.session.StderrPipe()
-	if err != nil {
-		return err
-	}
-	go io.Copy(os.Stderr, stderr)
-
 	return nil
 }
 
@@ -74,6 +54,10 @@ func (c *NativeClient) Run(command string) error {
 	if c.session == nil {
 		return errors.New("no open SSH session")
 	}
+	c.session.Stdout = os.Stdout
+	c.session.Stdin = os.Stdin
+	c.session.Stderr = os.Stderr
+
 	return c.session.Run(command)
 }
 
