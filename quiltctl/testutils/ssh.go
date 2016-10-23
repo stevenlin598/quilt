@@ -19,6 +19,12 @@ func (m *MockSSHClient) Run(command string) error {
 	return args.Error(0)
 }
 
+// RequestPTY mocks ssh.Client.RequestPTY()
+func (m *MockSSHClient) RequestPTY() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 // Disconnect mocks ssh.Client.Disconnect().
 func (m *MockSSHClient) Disconnect() error {
 	args := m.Called()

@@ -2,6 +2,7 @@ package etcd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,11 @@ import (
 // specifically that we don't respect ttl a the moment.
 type mock struct {
 	*sync.Mutex
-	root   Tree
-	writes *int
-	reads  *int
+	root        Tree
+	expires     map[string]time.Time
+	writes      *int
+	reads       *int
+	currentTime *time.Time
 }
 
 // NewMock creates a new mock etcd store for use of the unit tests.
@@ -27,6 +30,9 @@ func NewMock() Store {
 	m := mock{writes: new(int), reads: new(int)}
 	m.Mutex = &sync.Mutex{}
 	m.root.Children = make(map[string]Tree)
+	m.expires = map[string]time.Time{}
+	now := time.Now()
+	m.currentTime = &now
 	return m
 }
 
@@ -45,6 +51,7 @@ func (m mock) Get(path string) (string, error) {
 }
 
 func (m mock) get(path string) (string, error) {
+	m.expire()
 	dir, node := dirPath(path)
 	tree, err := m.getTree(dir)
 	if err != nil {
@@ -67,27 +74,24 @@ func (m mock) Create(path, value string, ttl time.Duration) error {
 
 func (m mock) create(path, value string, ttl time.Duration) error {
 	*m.writes++
+	m.expire()
 	tree, node, err := m.createPrefix(path)
 	if err != nil {
 		return err
 	}
 
-	if _, ok := tree.Children[node]; ok {
+	if _, ok := tree.Children[node]; ok && !m.expired(path) {
 		return errors.New("create: key exists")
 	}
 
 	tree.Children[node] = Tree{node, value, make(map[string]Tree)}
+	m.setTimer(path, ttl)
 	return nil
-}
-
-func (m mock) Update(path, value string, ttl time.Duration) error {
-	m.Lock()
-	defer m.Unlock()
-	return m.update(path, value, ttl)
 }
 
 func (m mock) update(path, value string, ttl time.Duration) error {
 	*m.writes++
+	m.expire()
 	tree, node, err := m.createPrefix(path)
 	if err != nil {
 		return err
@@ -100,16 +104,17 @@ func (m mock) update(path, value string, ttl time.Duration) error {
 	t := tree.Children[node]
 	t.Value = value
 	tree.Children[node] = t
+	m.setTimer(path, ttl)
 	return nil
 }
 
-func (m mock) Mkdir(dir string) error {
+func (m mock) Mkdir(dir string, ttl time.Duration) error {
 	m.Lock()
 	defer m.Unlock()
-	return m.mkdir(dir)
+	return m.mkdir(dir, ttl)
 }
 
-func (m mock) mkdir(dir string) error {
+func (m mock) mkdir(dir string, ttl time.Duration) error {
 	if dir == "/" {
 		return nil
 	}
@@ -128,12 +133,14 @@ func (m mock) mkdir(dir string) error {
 		t = mp[p]
 	}
 
+	m.setTimer(dir, ttl)
 	return nil
 }
 
 func (m mock) GetTree(path string) (Tree, error) {
 	m.Lock()
 	defer m.Unlock()
+	m.expire()
 	return m.getTree(path)
 }
 
@@ -167,6 +174,7 @@ func (m mock) Delete(path string) error {
 	}
 
 	delete(tree.Children, node)
+	delete(m.expires, path)
 	return nil
 }
 
@@ -177,12 +185,66 @@ func (m mock) Set(path, value string, ttl time.Duration) error {
 	if _, err := m.get(path); err != nil {
 		return m.create(path, value, 0)
 	}
-	return m.update(path, value, 0)
+
+	return m.update(path, value, ttl)
+}
+
+func (m mock) Refresh(path, value string, ttl time.Duration) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if m.expired(path) {
+		return errors.New("path expired")
+	}
+
+	curValue, err := m.get(path)
+	if err != nil {
+		return fmt.Errorf("no such node '%s'", path)
+	}
+
+	if curValue != value {
+		return fmt.Errorf("key '%s' does not have value '%s'", path, value)
+	}
+
+	return m.update(path, value, ttl)
+}
+
+func (m mock) RefreshDir(dir string, ttl time.Duration) error {
+	return m.Refresh(dir, "", ttl)
+}
+
+func (m mock) expired(path string) bool {
+	expireTime, ok := m.expires[path]
+	return ok && !expireTime.IsZero() && m.now().After(expireTime)
+}
+
+func (m mock) setTimer(path string, ttl time.Duration) {
+	if ttl <= 0 {
+		m.expires[path] = time.Time{} // special case for no expiration
+	} else {
+		m.expires[path] = m.now().Add(ttl)
+	}
+}
+
+func (m mock) expire() {
+	for path := range m.expires {
+		if m.expired(path) {
+			m.Delete(path)
+		}
+	}
+}
+
+func (m mock) advanceTime(shift time.Duration) {
+	*m.currentTime = (*m.currentTime).Add(shift)
+}
+
+func (m mock) now() time.Time {
+	return *m.currentTime
 }
 
 func (m mock) createPrefix(path string) (Tree, string, error) {
 	dir, node := dirPath(path)
-	m.mkdir(dir)
+	m.mkdir(dir, 0)
 
 	tree, err := m.getTree(dir)
 	return tree, node, err

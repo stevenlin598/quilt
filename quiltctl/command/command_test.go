@@ -494,6 +494,7 @@ func TestExec(t *testing.T) {
 	}
 
 	mockSSHClient.On("Connect", workerHost, "key").Return(nil)
+	mockSSHClient.On("RequestPTY").Return(nil)
 	mockSSHClient.On("Run", "docker exec -it foo cat /etc/hosts").Return(nil)
 	mockSSHClient.On("Disconnect").Return(nil)
 

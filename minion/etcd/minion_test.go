@@ -1,13 +1,19 @@
 package etcd
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net"
+	"path"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/NetSys/quilt/db"
+	"github.com/NetSys/quilt/minion/ip"
+
 	"github.com/davecgh/go-spew/spew"
 )
 
@@ -15,7 +21,7 @@ func TestWriteMinion(t *testing.T) {
 	t.Parallel()
 
 	ip := "1.2.3.4"
-	key := "/minion/nodes/" + ip
+	key := "/minion/nodes/" + ip + "/" + selfNode
 
 	conn := db.New()
 	store := NewMock()
@@ -71,7 +77,7 @@ func TestReadMinion(t *testing.T) {
 
 	m := randMinion()
 	js, _ := json.Marshal(m)
-	store.Set("/minion/nodes/foo", string(js), 0)
+	store.Set(nodeStore+"/foo/"+selfNode, string(js), 0)
 
 	readMinion(conn, store)
 	minions := conn.SelectFromMinion(nil)
@@ -85,7 +91,7 @@ func TestReadMinion(t *testing.T) {
 	}
 
 	store = NewMock()
-	store.Mkdir("/minion/nodes")
+	store.Mkdir(nodeStore, 0)
 	readMinion(conn, store)
 	minions = conn.SelectFromMinion(nil)
 	if len(minions) > 0 {
@@ -157,6 +163,168 @@ func TestFilter(t *testing.T) {
 	if !reflect.DeepEqual(etcd, newEtcd) {
 		t.Error(spew.Sprintf("No Self Etcd Found:\n\t%s\nExpected:\n\t%s",
 			newEtcd, etcd))
+	}
+}
+
+// Test that GenerateSubnet generates valid subnets, and passively test that it can
+// generate enough unique subnets by generating 3500 out of the possible 4095
+func TestGenerateSubnet(t *testing.T) {
+	store := newTestMock()
+	subnetAttempts = 5000 // big so we don't error unless something is wrong
+	defer func() {
+		subnetAttempts = 1000
+	}()
+	minionMaskBits, _ := ip.SubMask.Size()
+	emptyBits := uint32(0xffffffff >> uint(minionMaskBits))
+	for i := 0; i < 3500; i++ {
+		subnetStr, err := generateSubnet(store, db.Minion{PrivateIP: "10.1.0.1"})
+		if err != nil {
+			t.Fatal("Ran out of attempts to generate subnet")
+		}
+
+		subnet := ip.Parse(subnetStr, ip.QuiltPrefix, ip.QuiltMask)
+		if subnet.Equal(ip.LabelPrefix) {
+			t.Fatal("Generated the label subnet")
+		}
+
+		if !subnet.Mask(ip.QuiltMask).Equal(ip.QuiltPrefix) {
+			t.Fatal("Generated subnet is not within private subnet")
+		}
+
+		if !subnet.Mask(ip.SubMask).Equal(subnet) {
+			t.Fatal("Generated subnet is not with its own CIDR subnet")
+		}
+
+		subnetInt := binary.BigEndian.Uint32(subnet.To4())
+		if subnetInt&emptyBits != 0 {
+			t.Fatal("Generated subnet uses too many bits")
+		}
+	}
+}
+
+func TestUpdateSubnet(t *testing.T) {
+	store := newTestMock()
+	conn := db.New()
+
+	subnetTTL = time.Second
+	defer func() {
+		subnetTTL = 5 * time.Minute
+	}()
+
+	nextRand := uint32(0)
+	subnetStart, _ := ip.SubMask.Size()
+	ip.Rand32 = func() uint32 {
+		ret := nextRand
+		nextRand++
+		return ret << (32 - uint(subnetStart)) // increment inside the subnet
+	}
+
+	defer func() {
+		ip.Rand32 = rand.Uint32
+	}()
+
+	sleep = func(sleepTime time.Duration) {}
+	defer func() {
+		sleep = time.Sleep
+	}()
+
+	var m db.Minion
+	conn.Transact(func(view db.Database) error {
+		m = view.InsertMinion()
+		m.PrivateIP = "1.2.3.4"
+		m.Role = db.Worker
+		m.Self = true
+		view.Commit(m)
+		return nil
+	})
+
+	timeUpdateSubnet := func() chan struct{} {
+		out := make(chan struct{})
+		go func() {
+			m = updateSubnet(conn, store, m)
+			out <- struct{}{}
+			close(out)
+		}()
+		return out
+	}
+
+	done := timeUpdateSubnet()
+	timer := time.After(100 * time.Millisecond)
+	select {
+	case <-timer:
+		t.Fatal("Timed out syncing subnet")
+	case <-done:
+		break
+	}
+
+	firstSubnet := net.IPv4(10, 0, 16, 0).String()
+	secondSubnet := net.IPv4(10, 0, 32, 0).String()
+	thirdSubnet := net.IPv4(10, 0, 48, 0).String()
+
+	minion, err := store.Get(path.Join(subnetStore, firstSubnet))
+	if err != nil {
+		t.Fatalf("Expected subnet %s/20 to be claimed, none found", firstSubnet)
+	}
+
+	if minion != "1.2.3.4" {
+		t.Fatalf("Wrong minion owns subnet %s/20", firstSubnet)
+	}
+
+	err = store.Set(path.Join(subnetStore, firstSubnet), "1.2.3.5", time.Minute)
+	if err != nil {
+		t.Fatal("Could not overwrite store value")
+	}
+
+	done = timeUpdateSubnet()
+	timer = time.After(100 * time.Millisecond)
+	select {
+	case <-timer:
+		t.Fatal("Timed out syncing subnet")
+	case <-done:
+		break
+	}
+
+	minion, err = store.Get(path.Join(subnetStore, firstSubnet))
+	if err != nil {
+		t.Fatalf("Expected subnet %s/20 to be claimed, none found", firstSubnet)
+	}
+
+	if minion != "1.2.3.5" {
+		t.Fatal("Minion 1.2.3.4 reclaimed a subnet it shouldn't have")
+	}
+
+	minion, err = store.Get(path.Join(subnetStore, secondSubnet))
+	if err != nil {
+		t.Fatalf("Expected subnet %s/20 to be claimed, none found", secondSubnet)
+	}
+
+	if minion != "1.2.3.4" {
+		t.Fatalf("Wrong minion owns subnet %s/20", secondSubnet)
+	}
+
+	store.advanceTime(2 * time.Second)
+
+	done = timeUpdateSubnet()
+	timer = time.After(100 * time.Millisecond)
+	select {
+	case <-timer:
+		t.Fatal("Timed out syncing subnet")
+	case <-done:
+		break
+	}
+
+	_, err = store.Get(path.Join(subnetStore, secondSubnet))
+	if err == nil {
+		t.Fatalf("Expected subnet %s/20 to be expired", secondSubnet)
+	}
+
+	minion, err = store.Get(path.Join(subnetStore, thirdSubnet))
+	if err != nil {
+		t.Fatalf("Expected subnet %s/20 to be claimed, none found", thirdSubnet)
+	}
+
+	if minion != "1.2.3.4" {
+		t.Fatalf("Wrong minion owns subnet %s/20", thirdSubnet)
 	}
 }
 

@@ -380,6 +380,10 @@
 			"Rev": "5bcd134fee4dd1475da17714aac19c0aa0142e2f"
 		},
 		{
+			"ImportPath": "golang.org/x/crypto/ssh/terminal",
+			"Rev": "5bcd134fee4dd1475da17714aac19c0aa0142e2f"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "c4c3ea71919de159c9e246d7be66deb7f0a39a58"
 		},

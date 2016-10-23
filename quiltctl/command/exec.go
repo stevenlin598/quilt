@@ -102,13 +102,16 @@ func (eCmd *Exec) Run() int {
 		return 1
 	}
 
-	// -t allows the docker command to receive input over SSH.
-	err = eCmd.SSHClient.Connect(containerHost, eCmd.privateKey)
-	if err != nil {
+	if err = eCmd.SSHClient.Connect(containerHost, eCmd.privateKey); err != nil {
 		log.WithError(err).Info("Error opening SSH connection")
 		return 1
 	}
 	defer eCmd.SSHClient.Disconnect()
+
+	if err = eCmd.SSHClient.RequestPTY(); err != nil {
+		log.WithError(err).Info("Error requesting pseudo-terminal")
+		return 1
+	}
 
 	command := fmt.Sprintf("docker exec -it %s %s", container.DockerID, eCmd.command)
 	if err = eCmd.SSHClient.Run(command); err != nil {

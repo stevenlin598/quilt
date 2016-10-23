@@ -13,6 +13,7 @@ import (
 	"github.com/NetSys/quilt/api/pb"
 	"github.com/NetSys/quilt/db"
 	"github.com/NetSys/quilt/engine"
+	"github.com/NetSys/quilt/minion/ip"
 	"github.com/NetSys/quilt/stitch"
 
 	"golang.org/x/net/context"
@@ -93,6 +94,11 @@ func (s server) Run(cts context.Context, runReq *pb.RunRequest) (*pb.RunReply, e
 	stitch, err := stitch.New(runReq.Stitch)
 	if err != nil {
 		return &pb.RunReply{}, err
+	}
+
+	if len(stitch.QueryMachines()) > ip.MaxMinionCount {
+		return &pb.RunReply{}, fmt.Errorf("cannot boot more than %d "+
+			"machines", ip.MaxMinionCount)
 	}
 
 	err = engine.UpdatePolicy(s.dbConn, stitch)

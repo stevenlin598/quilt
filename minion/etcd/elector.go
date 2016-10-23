@@ -72,7 +72,7 @@ func campaign(conn db.Conn, store Store) {
 		ttl := electionTTL * time.Second
 
 		if etcdRows[0].Leader {
-			err = store.Update(leaderKey, IP, ttl)
+			err = store.Refresh(leaderKey, IP, ttl)
 		} else {
 			err = store.Create(leaderKey, IP, ttl)
 		}

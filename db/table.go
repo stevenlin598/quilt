@@ -54,6 +54,7 @@ func (t *table) alert() {
 		select {
 		case <-trigger.stop:
 			delete(t.triggers, trigger)
+			continue
 		default:
 		}
 

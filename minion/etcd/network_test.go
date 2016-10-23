@@ -4,20 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net"
+	"path"
 	"reflect"
 	"strconv"
 	"testing"
 
 	"github.com/NetSys/quilt/db"
+	"github.com/NetSys/quilt/minion/ip"
+
 	"github.com/davecgh/go-spew/spew"
 )
 
 func TestUpdateEtcdContainers(t *testing.T) {
 	store := newTestMock()
-	store.Mkdir(minionDir)
+	store.Mkdir(minionDir, 0)
 	conn := db.New()
 	var containers []db.Container
+	idIPMap := map[string]string{}
 	conn.Transact(func(view db.Database) error {
 		for i := 2; i < 5; i++ {
 			c := view.InsertContainer()
@@ -28,6 +31,7 @@ func TestUpdateEtcdContainers(t *testing.T) {
 			c.Labels = []string{"red", "blue"}
 			c.Env = map[string]string{"i": si}
 			view.Commit(c)
+			idIPMap[si] = c.IP
 		}
 		containers = view.SelectFromContainer(nil)
 		return nil
@@ -38,7 +42,6 @@ func TestUpdateEtcdContainers(t *testing.T) {
 		si := strconv.Itoa(i)
 		storeTemp := storeContainer{
 			StitchID: i,
-			IP:       fmt.Sprintf("10.0.0.%s", si),
 			Command:  []string{"echo", si},
 			Labels:   []string{"red", "blue"},
 			Env:      map[string]string{"i": si},
@@ -75,11 +78,6 @@ func TestUpdateEtcdContainers(t *testing.T) {
 			*store.writes))
 	}
 
-	for i := range cs {
-		if cs[i].StitchID == 3 {
-			cs[i].IP = "10.0.0.7"
-		}
-	}
 	// simulate etcd having out of date information, except the IP
 	badEtcdSlice := []storeContainer{}
 	for i := 2; i < 6; i++ {
@@ -90,27 +88,24 @@ func TestUpdateEtcdContainers(t *testing.T) {
 			Labels:   []string{"red", "blue"},
 			Env:      map[string]string{"i": si},
 		}
-		if i == 3 {
-			si = "7"
-		}
-		badEtcd.IP = fmt.Sprintf("10.0.0.%s", si)
 		badEtcdSlice = append(badEtcdSlice, badEtcd)
 	}
 
 	// add a new container with a bad ip to test ip syncing
-	badEtcdSlice = append(badEtcdSlice, storeContainer{
-		StitchID: 8,
-		IP:       "10.0.0.0",
-	})
-	cs = append(cs, storeContainer{StitchID: 8, IP: "10.0.0.0"})
+	badEtcdSlice = append(badEtcdSlice, storeContainer{StitchID: 8})
+	cs = append(cs, storeContainer{StitchID: 8})
 	conn.Transact(func(view db.Database) error {
 		c := view.InsertContainer()
 		c.StitchID = 8
-		c.IP = "junk"
+		c.IP = "10.0.0.0"
 		view.Commit(c)
 		containers = append([]db.Container{c}, containers...)
 		return nil
 	})
+	idIPMap["8"] = "10.0.0.0"
+	jsonIPMap, _ := json.Marshal(idIPMap)
+	minionDirKey := path.Join(nodeStore, "testMinion")
+	store.Set(path.Join(minionDirKey, minionIPStore), string(jsonIPMap), 0)
 
 	badTestContainers, _ := json.Marshal(badEtcdSlice)
 	err = store.Set(containerStore, string(badTestContainers), 0)
@@ -119,16 +114,6 @@ func TestUpdateEtcdContainers(t *testing.T) {
 	}
 
 	*store.writes = 0
-	nextRand := uint32(0)
-	rand32 = func() uint32 {
-		ret := nextRand
-		nextRand++
-		return ret
-	}
-
-	defer func() {
-		rand32 = rand.Uint32
-	}()
 	etcdData, _ = readEtcd(store)
 	etcdData, _ = updateEtcdContainer(store, etcdData, containers)
 
@@ -158,7 +143,7 @@ func TestUpdateEtcdContainers(t *testing.T) {
 
 func TestUpdateEtcdLabel(t *testing.T) {
 	store := newTestMock()
-	store.Mkdir(minionDir)
+	store.Mkdir(minionDir, 0)
 	conn := db.New()
 	var containers []db.Container
 	conn.Transact(func(view db.Database) error {
@@ -213,7 +198,7 @@ func TestUpdateEtcdLabel(t *testing.T) {
 	})
 
 	// Label 2 is now multhost, so if etcd knows that, it should get etcd's ip
-	labelStruct["2"] = "10.1.0.11"
+	labelStruct["2"] = "10.0.0.11"
 	testLabel, _ = json.Marshal(labelStruct)
 	err = store.Set(labelToIPStore, string(testLabel), 0)
 	if err != nil {
@@ -222,19 +207,19 @@ func TestUpdateEtcdLabel(t *testing.T) {
 
 	// the dockerIP map still has label 3's IP, but label 3 is now multihost, so it
 	// should get a new IP
-	labelStruct["3"] = "10.1.0.0"
+	labelStruct["3"] = "10.0.0.0"
 
 	*store.writes = 0
 	etcdData, _ = readEtcd(store)
 	nextRand := uint32(0)
-	rand32 = func() uint32 {
+	ip.Rand32 = func() uint32 {
 		ret := nextRand
 		nextRand++
 		return ret
 	}
 
 	defer func() {
-		rand32 = rand.Uint32
+		ip.Rand32 = rand.Uint32
 	}()
 
 	etcdData, _ = updateEtcdLabel(store, etcdData, containers)
@@ -270,8 +255,8 @@ func TestUpdateLeaderDBC(t *testing.T) {
 		view.Commit(dbc)
 
 		updateLeaderDBC(view, view.SelectFromContainer(nil), storeData{
-			containers: []storeContainer{{StitchID: 1, IP: "foo"}},
-		})
+			containers: []storeContainer{{StitchID: 1}},
+		}, map[string]string{"1": "foo"})
 
 		dbcs := view.SelectFromContainer(nil)
 		if len(dbcs) != 1 || dbcs[0].StitchID != 1 || dbcs[0].IP != "foo" ||
@@ -297,7 +282,7 @@ func testUpdateWorkerDBC(t *testing.T, view db.Database) {
 	minion.Self = true
 	view.Commit(minion)
 
-	for id := 1; id < 3; id++ {
+	for id := 1; id < 4; id++ {
 		container := view.InsertContainer()
 		container.StitchID = id
 		view.Commit(container)
@@ -311,21 +296,53 @@ func testUpdateWorkerDBC(t *testing.T, view db.Database) {
 	cs := storeContainerSlice{
 		{
 			StitchID: 1,
-			IP:       "1.1.1.1",
 			Command:  []string{"echo", "hi"},
 			Labels:   []string{"red", "blue"},
 			Env:      map[string]string{"GOPATH": "~/gocode"},
 			Minion:   "1.2.3.4",
 		}, {
 			StitchID: 2,
-			IP:       "2.2.2.2",
 			Command:  []string{"echo", "bye"},
 			Labels:   []string{"blue", "green"},
 			Env:      map[string]string{"GOPATH": "~"},
 			Minion:   "1.2.3.4",
-		}}
+		}, {
+			StitchID: 3,
+			Command:  []string{"echo", "bye"},
+			Labels:   []string{"blue", "green"},
+			Env:      map[string]string{"GOPATH": "~"},
+			Minion:   "1.2.3.5",
+		},
+	}
 
-	updateWorkerDBC(view, db.Minion{PrivateIP: "1.2.3.4"}, storeData{containers: cs})
+	nextRand := uint32(0)
+	ip.Rand32 = func() uint32 {
+		ret := nextRand
+		nextRand++
+		return ret
+	}
+
+	defer func() {
+		ip.Rand32 = rand.Uint32
+	}()
+
+	store := newTestMock()
+
+	jsonCS, _ := json.Marshal(cs)
+	err := store.Set(containerStore, string(jsonCS), 0)
+	if err != nil {
+		t.Fatalf("Failed to write to store.")
+	}
+
+	jsonNull, _ := json.Marshal(map[string]string{})
+	minionDirKey := path.Join(nodeStore, "1.2.3.4")
+	err = store.Set(path.Join(minionDirKey, minionIPStore), string(jsonNull), 0)
+	if err != nil {
+		t.Fatalf("Failed to write to store.")
+	}
+
+	updateWorker(view, db.Minion{PrivateIP: "1.2.3.4",
+		Subnet: "10.1.0.0"}, store, storeData{containers: cs})
 
 	ipMap := map[int]string{}
 	labelMap := map[int][]string{}
@@ -338,12 +355,29 @@ func testUpdateWorkerDBC(t *testing.T, view db.Database) {
 		envMap[c.DockerID] = c.Env
 	}
 
-	expIPMap := map[int]string{
-		1: "1.1.1.1",
-		2: "2.2.2.2",
+	expIPMap1 := map[int]string{
+		1: "10.1.0.0",
+		2: "10.1.0.1",
 	}
-	if !eq(ipMap, expIPMap) {
-		t.Error(spew.Sprintf("\nGot: %v\nExp: %v\n", ipMap, expIPMap))
+
+	expIPMap2 := map[int]string{
+		1: expIPMap1[2],
+		2: expIPMap1[1],
+	}
+	if !eq(expIPMap1, ipMap) && !eq(expIPMap2, ipMap) {
+		t.Error(spew.Sprintf("\nGot: %v\nExp: %v or %v\n",
+			ipMap, expIPMap1, expIPMap2))
+	}
+
+	resultMap := map[string]string{}
+	storeIPs, _ := store.Get(path.Join(minionDirKey, minionIPStore))
+	json.Unmarshal([]byte(storeIPs), &resultMap)
+
+	for id, ip := range resultMap {
+		sid, _ := strconv.Atoi(id)
+		if otherIP, ok := ipMap[sid]; !ok || ip != otherIP {
+			t.Fatalf("IPs did not match: %s vs %s", ip, otherIP)
+		}
 	}
 
 	expLabelMap := map[int][]string{
@@ -362,7 +396,6 @@ func TestContainerJoinScore(t *testing.T) {
 	a := storeContainer{
 		Minion:   "Minion",
 		Image:    "Image",
-		IP:       "IP",
 		StitchID: 1,
 	}
 	b := a
@@ -378,13 +411,6 @@ func TestContainerJoinScore(t *testing.T) {
 		t.Errorf("Unexpected score: %d", score)
 	}
 	b = a
-
-	b.IP = "Wrong"
-	b.StitchID = 3
-	score = containerJoinScore(a, b)
-	if score != 11 {
-		t.Errorf("Unexpected score: %d", score)
-	}
 }
 
 func TestUpdateDBLabels(t *testing.T) {
@@ -397,23 +423,22 @@ func TestUpdateDBLabels(t *testing.T) {
 
 func testUpdateDBLabels(t *testing.T, view db.Database) {
 	labelStruct := map[string]string{"a": "10.0.0.2"}
+	ipMap := map[string]string{"1": "10.0.0.3", "2": "10.0.0.4"}
 	containerSlice := []storeContainer{
 		{
 			StitchID: 1,
 			Labels:   []string{"a", "b"},
-			IP:       "10.0.0.3",
 		},
 		{
 			StitchID: 2,
 			Labels:   []string{"a"},
-			IP:       "10.0.0.4",
 		},
 	}
 
 	updateDBLabels(view, storeData{
 		containers: containerSlice,
 		multiHost:  labelStruct,
-	})
+	}, ipMap)
 
 	type labelIPs struct {
 		labelIP      string
@@ -446,123 +471,6 @@ func testUpdateDBLabels(t *testing.T, view db.Database) {
 	}
 }
 
-func TestSyncIPs(t *testing.T) {
-	prefix := net.IPv4(10, 0, 0, 0)
-
-	nextRand := uint32(0)
-	rand32 = func() uint32 {
-		ret := nextRand
-		nextRand++
-		return ret
-	}
-
-	defer func() {
-		rand32 = rand.Uint32
-	}()
-
-	ipMap := map[string]string{
-		"a": "",
-		"b": "",
-		"c": "",
-	}
-
-	syncIPs(ipMap, prefix)
-
-	// 10.0.0.1 is reserved for the default gateway
-	exp := sliceToSet([]string{"10.0.0.0", "10.0.0.2", "10.0.0.3"})
-	ipSet := map[string]struct{}{}
-	for _, ip := range ipMap {
-		ipSet[ip] = struct{}{}
-	}
-
-	if !eq(ipSet, exp) {
-		t.Error(spew.Sprintf("Unexpected IP allocations."+
-			"\nFound %s\nExpected %s\nMap %s",
-			ipSet, exp, ipMap))
-	}
-
-	ipMap["a"] = "junk"
-
-	syncIPs(ipMap, prefix)
-
-	aIP := ipMap["a"]
-	expected := "10.0.0.4"
-	if aIP != expected {
-		t.Error(spew.Sprintf("Unexpected IP allocations.\nFound %s\nExpected %s",
-			aIP, expected))
-	}
-
-	// Force collisions
-	rand32 = func() uint32 {
-		return 4
-	}
-
-	ipMap["b"] = "junk"
-
-	syncIPs(ipMap, prefix)
-
-	if ip, _ := ipMap["b"]; ip != "" {
-		t.Error(spew.Sprintf("Expected IP deletion, found %s", ip))
-	}
-}
-
-func TestParseIP(t *testing.T) {
-	res := parseIP("1.0.0.0", 0x01000000, 0xff000000)
-	if res != 0x01000000 {
-		t.Errorf("parseIP expected 0x%x, got 0x%x", 0x01000000, res)
-	}
-
-	res = parseIP("2.0.0.1", 0x01000000, 0xff000000)
-	if res != 0 {
-		t.Errorf("parseIP expected 0x%x, got 0x%x", 0, res)
-	}
-
-	res = parseIP("a", 0x01000000, 0xff000000)
-	if res != 0 {
-		t.Errorf("parseIP expected 0x%x, got 0x%x", 0, res)
-	}
-}
-
-func TestRandomIP(t *testing.T) {
-	prefix := uint32(0xaabbccdd)
-	mask := uint32(0xfffff000)
-
-	conflicts := map[uint32]struct{}{}
-
-	// Only 4k IPs, in 0xfff00000. Guaranteed a collision
-	for i := 0; i < 5000; i++ {
-		ip := randomIP(conflicts, prefix, mask)
-		if ip == 0 {
-			continue
-		}
-
-		if _, ok := conflicts[ip]; ok {
-			t.Fatalf("IP Double allocation: 0x%x", ip)
-		}
-
-		if prefix&mask != ip&mask {
-			t.Fatalf("Bad IP allocation: 0x%x & 0x%x != 0x%x",
-				ip, mask, prefix&mask)
-		}
-
-		conflicts[ip] = struct{}{}
-	}
-
-	if len(conflicts) < 2500 || len(conflicts) > 4096 {
-		// If the code's working, this is possible but *extremely* unlikely.
-		// Probably a bug.
-		t.Errorf("Too few conflicts: %d", len(conflicts))
-	}
-}
-
 func eq(a, b interface{}) bool {
 	return reflect.DeepEqual(a, b)
-}
-
-func sliceToSet(slice []string) map[string]struct{} {
-	res := map[string]struct{}{}
-	for _, s := range slice {
-		res[s] = struct{}{}
-	}
-	return res
 }

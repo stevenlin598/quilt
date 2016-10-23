@@ -13,13 +13,14 @@ import (
 // A Store implements a consistent distributed key value store similar to Etcd.
 type Store interface {
 	Watch(path string, rateLimit time.Duration) chan struct{}
-	Mkdir(dir string) error
+	Mkdir(dir string, ttl time.Duration) error
 	GetTree(dir string) (Tree, error)
 	Get(path string) (string, error)
 	Delete(path string) error
 	Create(path, value string, ttl time.Duration) error
-	Update(path, value string, ttl time.Duration) error
 	Set(path, value string, ttl time.Duration) error
+	Refresh(path, value string, ttl time.Duration) error
+	RefreshDir(dir string, ttl time.Duration) error
 }
 
 type store struct {
@@ -61,10 +62,11 @@ func (s store) Watch(path string, rateLimit time.Duration) chan struct{} {
 	return c
 }
 
-func (s store) Mkdir(dir string) error {
+func (s store) Mkdir(dir string, ttl time.Duration) error {
 	_, err := s.kapi.Set(ctx(), dir, "", &client.SetOptions{
 		Dir:       true,
 		PrevExist: client.PrevNoExist,
+		TTL:       ttl,
 	})
 	return err
 }
@@ -129,13 +131,28 @@ func (s store) Create(path, value string, ttl time.Duration) error {
 	return err
 }
 
-func (s store) Update(path, value string, ttl time.Duration) error {
+func (s store) Set(path, value string, ttl time.Duration) error {
 	_, err := s.kapi.Set(ctx(), path, value, &client.SetOptions{TTL: ttl})
 	return err
 }
 
-func (s store) Set(path, value string, ttl time.Duration) error {
-	_, err := s.kapi.Set(ctx(), path, value, nil)
+func (s store) Refresh(path, value string, ttl time.Duration) error {
+	_, err := s.kapi.Set(ctx(), path, value,
+		&client.SetOptions{
+			PrevValue: value,
+			PrevExist: client.PrevExist,
+			TTL:       ttl,
+		})
+	return err
+}
+
+func (s store) RefreshDir(dir string, ttl time.Duration) error {
+	_, err := s.kapi.Set(ctx(), dir, "",
+		&client.SetOptions{
+			Dir:       true,
+			PrevExist: client.PrevExist,
+			TTL:       ttl,
+		})
 	return err
 }
 
