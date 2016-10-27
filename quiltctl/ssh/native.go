@@ -7,9 +7,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/minio/go-homedir"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/terminal"
@@ -30,13 +32,10 @@ func NewNativeClient() *NativeClient {
 func (c *NativeClient) Connect(host string, keyPath string) error {
 	var auth ssh.AuthMethod
 	if keyPath == "" {
-		if sa, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK")); err == nil {
-			auth = ssh.PublicKeysCallback(agent.NewClient(sa).Signers)
-		}
+		auth = ssh.PublicKeys(defaultSigners()...)
 	} else {
-		auth = publicKeyFile(keyPath)
+		auth = ssh.PublicKeys(signerFromFile(keyPath))
 	}
-
 	sshConfig := &ssh.ClientConfig{
 		User: "quilt",
 		Auth: []ssh.AuthMethod{auth},
@@ -52,6 +51,38 @@ func (c *NativeClient) Connect(host string, keyPath string) error {
 		return err
 	}
 	return nil
+}
+
+var defaultKeys = []string{"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"}
+
+// Gets the signers for the default private key locations if possible
+func defaultSigners() []ssh.Signer {
+	var signers []ssh.Signer
+	if sa, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK")); err == nil {
+		agentSigners, err := agent.NewClient(sa).Signers()
+		if err != nil {
+			log.Warning("Error getting keys from ssh-agent")
+		}
+		signers = agentSigners
+
+	}
+	dir, err := homedir.Dir()
+	if err != nil {
+		log.Warning("Error getting path of home directory")
+		return signers
+	}
+
+	sshDir := filepath.Join(dir, ".ssh")
+	for _, keyName := range defaultKeys {
+		identityPath := filepath.Join(sshDir, keyName)
+		key := signerFromFile(identityPath)
+		if key == nil {
+			log.Debugf("Missing identity file: %s", identityPath)
+			continue
+		}
+		signers = append(signers, key)
+	}
+	return signers
 }
 
 // RequestPTY requests a pseudo-terminal on the remote server.
@@ -185,7 +216,7 @@ func (p *pty) monitorWindowSize() {
 	}
 }
 
-func publicKeyFile(file string) ssh.AuthMethod {
+func signerFromFile(file string) ssh.Signer {
 	buffer, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil
@@ -195,6 +226,5 @@ func publicKeyFile(file string) ssh.AuthMethod {
 	if err != nil {
 		return nil
 	}
-
-	return ssh.PublicKeys(key)
+	return key
 }
