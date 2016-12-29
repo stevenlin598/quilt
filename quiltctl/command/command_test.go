@@ -171,7 +171,7 @@ func TestStopFlags(t *testing.T) {
 	expNamespace := "namespace"
 	checkStopParsing(t, []string{"-namespace", expNamespace}, expNamespace, nil)
 	checkStopParsing(t, []string{expNamespace}, expNamespace, nil)
-	checkStopParsing(t, []string{}, defaultNamespace, nil)
+	checkStopParsing(t, []string{}, "", nil)
 }
 
 func checkSSHParsing(t *testing.T, args []string, expMachine int,
@@ -193,6 +193,35 @@ func TestSSHFlags(t *testing.T) {
 	checkSSHParsing(t, append([]string{"1"}, sshArgs...), 1, sshArgs, nil)
 	checkSSHParsing(t, []string{}, 0, nil,
 		errors.New("must specify a target machine"))
+}
+
+func TestStopNamespaceDefault(t *testing.T) {
+	t.Parallel()
+
+	mockGetter := new(testutils.Getter)
+	c := &clientMock.Client{}
+	mockGetter.On("Client", mock.Anything).Return(c, nil)
+
+	c.ClusterReturn = []db.Cluster{
+		{
+			Namespace: "testSpace",
+		},
+	}
+
+	stopCmd := NewStopCommand()
+	stopCmd.clientGetter = mockGetter
+	stopCmd.Run()
+	expStitch := `{"namespace": "testSpace"}`
+	assert.Equal(t, expStitch, c.DeployArg)
+
+	name, err := clusterName(c)
+	assert.Equal(t, "testSpace", name)
+	assert.NoError(t, err)
+
+	c.ClusterReturn = []db.Cluster{}
+	name, err = clusterName(c)
+	assert.Equal(t, "", name)
+	assert.EqualError(t, err, "no cluster set")
 }
 
 func TestStopNamespace(t *testing.T) {
