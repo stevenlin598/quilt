@@ -18,6 +18,7 @@ import (
 )
 
 var pullCacheTimeout = time.Minute
+var networkTimeout = time.Minute
 
 // ErrNoSuchContainer is the error returned when an operation is requested on a
 // non-existent container.
@@ -175,8 +176,9 @@ func (dk Client) GetFromContainer(id string, src string) (string, error) {
 	var buffIn bytes.Buffer
 	var buffOut bytes.Buffer
 	err := dk.DownloadFromContainer(id, dkc.DownloadFromContainerOptions{
-		OutputStream: &buffIn,
-		Path:         src,
+		OutputStream:      &buffIn,
+		Path:              src,
+		InactivityTimeout: networkTimeout,
 	})
 	if err != nil {
 		return "", err
@@ -238,7 +240,10 @@ func (dk Client) Pull(image string) error {
 	}
 
 	log.WithField("image", image).Info("Begin image pull")
-	opts := dkc.PullImageOptions{Repository: repo, Tag: tag}
+	opts := dkc.PullImageOptions{Repository: repo,
+		Tag:               tag,
+		InactivityTimeout: networkTimeout,
+	}
 	if err := dk.PullImage(opts, dkc.AuthConfiguration{}); err != nil {
 		log.WithField("image", image).WithError(err).Error("Failed image pull")
 		return err
