@@ -8,12 +8,12 @@ type Minion struct {
 	ID int `json:"-"`
 
 	Self           bool   `json:"-"`
-	Spec           string `json:"-" rowStringer:"omit"`
 	AuthorizedKeys string `json:"-" rowStringer:"omit"`
 	SupervisorInit bool   `json:"-"`
 
 	// Below fields are included in the JSON encoding.
 	Role       Role
+	Spec       string `rowStringer:"omit"`
 	PrivateIP  string
 	Provider   string
 	Size       string

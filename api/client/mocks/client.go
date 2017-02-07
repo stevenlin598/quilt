@@ -10,11 +10,12 @@ type Client struct {
 	ContainerReturn []db.Container
 	EtcdReturn      []db.Etcd
 	ClusterReturn   []db.Cluster
+	MinionReturn    []db.Minion
 	HostReturn      string
 	DeployArg       string
 
 	MachineErr, ContainerErr, EtcdErr, ClusterErr, HostErr error
-	DeployErr, ConnectionErr                               error
+	DeployErr, ConnectionErr, MinionErr                    error
 }
 
 // QueryMachines retrieves the machines tracked by the Quilt daemon.
@@ -48,6 +49,15 @@ func (c *Client) QueryConnections() ([]db.Connection, error) {
 		return nil, c.ConnectionErr
 	}
 	return nil, nil
+}
+
+// QueryMinions retrieves the connection information tracked by the
+// Quilt daemon.
+func (c *Client) QueryMinions() ([]db.Minion, error) {
+	if c.MinionErr != nil {
+		return nil, c.MinionErr
+	}
+	return c.MinionReturn, nil
 }
 
 // QueryLabels retrieves the label information tracked by the Quilt daemon.

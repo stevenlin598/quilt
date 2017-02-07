@@ -78,6 +78,8 @@ func (s server) Query(cts context.Context, query *pb.DBQuery) (*pb.QueryReply, e
 		rows = s.conn.SelectFromLabel(nil)
 	case db.ClusterTable:
 		rows = s.conn.SelectFromCluster(nil)
+	case db.MinionTable:
+		rows = s.conn.SelectFromMinion(nil)
 	default:
 		return nil, fmt.Errorf("unrecognized table: %s", query.Table)
 	}

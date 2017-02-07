@@ -29,6 +29,7 @@ func TestWriteMinion(t *testing.T) {
 		m.Self = true
 		m.Role = db.Master
 		m.Provider = "Amazon"
+		m.Spec = "testSpec"
 		m.Size = "Big"
 		m.Region = "Somewhere"
 		view.Commit(m)
@@ -52,6 +53,7 @@ func TestWriteMinion(t *testing.T) {
 
 	expVal := `{
     "Role": "Master",
+    "Spec": "testSpec",
     "PrivateIP": "1.2.3.4",
     "Provider": "Amazon",
     "Size": "Big",

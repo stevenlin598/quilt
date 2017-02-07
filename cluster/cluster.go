@@ -428,6 +428,13 @@ func (clst cluster) get() ([]machine.Machine, error) {
 	return cloudMachines, nil
 }
 
+// GetMachines gets the list of machines associated with the namespace
+func GetMachines(namespace string) ([]machine.Machine, error) {
+	c := newCluster(db.Conn{}, namespace)
+	machines, err := c.get()
+	return machines, err
+}
+
 func groupBy(machines []machine.Machine) map[instance][]machine.Machine {
 	machineMap := map[instance][]machine.Machine{}
 	for _, m := range machines {

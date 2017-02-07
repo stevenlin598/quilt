@@ -29,6 +29,37 @@ func (c mockAPIClient) Deploy(ctx context.Context, in *pb.DeployRequest,
 	return &pb.DeployReply{}, nil
 }
 
+func TestUnmarshalMinion(t *testing.T) {
+	t.Parallel()
+
+	apiClient := mockAPIClient{
+		mockResponse: `[{"Role":"Master","Spec":"testSpec","Provider":"Amazon",` +
+			`"Region":"","Size":"size","DiskSize":0,"SSHKeys":null,` +
+			`"CloudID":"","PrivateIP":"9.9.9.9"}]`,
+	}
+	c := clientImpl{pbClient: apiClient}
+	res, err := c.QueryMinions()
+	if err != nil {
+		t.Errorf("Unexpected error: %s", err.Error())
+		return
+	}
+
+	exp := []db.Minion{
+		{
+			Role:      "Master",
+			Spec:      "testSpec",
+			Provider:  "Amazon",
+			Size:      "size",
+			PrivateIP: "9.9.9.9",
+		},
+	}
+
+	if !reflect.DeepEqual(exp, res) {
+		t.Errorf("Bad unmarshalling of minions: expected %v, got %v.",
+			exp, res)
+	}
+}
+
 func TestUnmarshalMachine(t *testing.T) {
 	t.Parallel()
 

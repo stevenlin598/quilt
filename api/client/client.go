@@ -48,6 +48,9 @@ type Client interface {
 	// QueryClusters retrieves cluster information tracked by the Quilt daemon.
 	QueryClusters() ([]db.Cluster, error)
 
+	// QueryMinions retrieves the minions tracked by the Quilt daemon.
+	QueryMinions() ([]db.Minion, error)
+
 	// Deploy makes a request to the Quilt daemon to deploy the given deployment.
 	Deploy(deployment string) error
 
@@ -144,6 +147,12 @@ func query(pbClient pb.APIClient, table db.TableType) (interface{}, error) {
 			return nil, err
 		}
 		return clusters, nil
+	case db.MinionTable:
+		var minions []db.Minion
+		if err := json.Unmarshal(replyBytes, &minions); err != nil {
+			return nil, err
+		}
+		return minions, nil
 	default:
 		panic(fmt.Sprintf("unsupported table type: %s", table))
 	}
@@ -162,6 +171,16 @@ func (c clientImpl) QueryMachines() ([]db.Machine, error) {
 	}
 
 	return rows.([]db.Machine), nil
+}
+
+// QueryMinions retrieves the minions tracked by the Quilt daemon.
+func (c clientImpl) QueryMinions() ([]db.Minion, error) {
+	rows, err := query(c.pbClient, db.MinionTable)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows.([]db.Minion), nil
 }
 
 // QueryContainers retrieves the containers tracked by the Quilt daemon.
